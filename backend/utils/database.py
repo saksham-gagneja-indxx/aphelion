@@ -1,0 +1,189 @@
+"""
+Database connection and initialization for Social Media Automation Agent
+Uses SQLAlchemy ORM for database abstraction
+"""
+
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy.pool import StaticPool
+from pathlib import Path
+from backend.utils.config import get_settings
+from backend.utils.logger import get_logger
+
+# SQLAlchemy declarative base for all models
+Base = declarative_base()
+
+logger = get_logger("social_media_automation.database")
+
+
+class Database:
+    """Database connection manager"""
+
+    def __init__(self):
+        self.engine = None
+        self.SessionLocal = None
+        self._initialized = False
+
+    def initialize(self):
+        """Initialize database connection and create tables"""
+        if self._initialized:
+            return
+
+        settings = get_settings()
+        database_url = settings.database_url
+
+        logger.info(f"📦 Initializing database: {database_url}")
+
+        try:
+            # Create engine
+            if "sqlite" in database_url:
+                # SQLite specific configuration
+                self.engine = create_engine(
+                    database_url,
+                    connect_args={"check_same_thread": False},
+                    poolclass=StaticPool,
+                    echo=settings.db_echo
+                )
+            else:
+                # PostgreSQL and other databases
+                self.engine = create_engine(
+                    database_url,
+                    echo=settings.db_echo,
+                    pool_pre_ping=True
+                )
+
+            # Create session factory
+            self.SessionLocal = sessionmaker(
+                autocommit=False,
+                autoflush=False,
+                bind=self.engine
+            )
+
+            # Import models before create_all so they are registered on
+            # Base.metadata. Without this, initialize() runs against an empty
+            # metadata and silently creates NO tables - every query then fails
+            # with "no such table". Imported here (not at module scope)
+            # because the models import Base from this module.
+            from backend.models import analytics, post, user  # noqa: F401
+
+            # Create all tables
+            Base.metadata.create_all(bind=self.engine)
+
+            created = inspect(self.engine).get_table_names()
+            logger.info(f"✅ Database initialized successfully (tables: {', '.join(created) or 'none'})")
+            self._initialized = True
+
+        except Exception as e:
+            logger.error(f"❌ Database initialization failed: {str(e)}")
+            raise
+
+    def get_session(self) -> Session:
+        """Get a new database session"""
+        if not self._initialized:
+            self.initialize()
+        return self.SessionLocal()
+
+    def close(self):
+        """Close database connection"""
+        if self.engine:
+            self.engine.dispose()
+            logger.info("✅ Database connection closed")
+
+    def get_table_info(self) -> dict:
+        """Get information about all tables in the database"""
+        if not self.engine:
+            return {}
+
+        inspector = inspect(self.engine)
+        tables = {}
+
+        for table_name in inspector.get_table_names():
+            columns = {}
+            for col in inspector.get_columns(table_name):
+                columns[col['name']] = str(col['type'])
+            tables[table_name] = columns
+
+        return tables
+
+    def health_check(self) -> bool:
+        """Check if database connection is healthy"""
+        try:
+            with self.get_session() as session:
+                # SQLAlchemy 2.0 requires raw SQL to be wrapped in text()
+                session.execute(text("SELECT 1"))
+                return True
+        except Exception as e:
+            logger.error(f"❌ Database health check failed: {str(e)}")
+            return False
+
+
+# Global database instance
+_db_instance = None
+
+
+def get_db() -> Database:
+    """Get or create the global database instance"""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = Database()
+        _db_instance.initialize()
+    return _db_instance
+
+
+def get_session() -> Session:
+    """Get a new database session"""
+    return get_db().get_session()
+
+
+def init_db():
+    """Initialize the database (called on startup)"""
+    db = get_db()
+    logger.info("🔧 Running database initialization...")
+
+    # Ensure directory exists
+    settings = get_settings()
+    if "sqlite" in settings.database_url:
+        db_path = Path(settings.database_url.replace("sqlite:///", ""))
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    db.initialize()
+    logger.info("✅ Database ready")
+
+
+def reset_db():
+    """Reset database (development only) - drops all tables and recreates them"""
+    db = get_db()
+    logger.warning("⚠️  Resetting database...")
+
+    try:
+        Base.metadata.drop_all(bind=db.engine)
+        Base.metadata.create_all(bind=db.engine)
+        logger.info("✅ Database reset successfully")
+    except Exception as e:
+        logger.error(f"❌ Database reset failed: {str(e)}")
+        raise
+
+
+def dependency_session() -> Session:
+    """FastAPI/Flask dependency for getting a database session"""
+    db = get_session()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    # Test database connection
+    db = get_db()
+    print("✅ Database connection test passed")
+
+    if db.health_check():
+        print("✅ Database health check passed")
+    else:
+        print("❌ Database health check failed")
+
+    tables = db.get_table_info()
+    print(f"\n📊 Tables in database: {len(tables)}")
+    for table_name, columns in tables.items():
+        print(f"  - {table_name}: {len(columns)} columns")

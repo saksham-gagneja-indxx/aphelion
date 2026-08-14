@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Social Media Automation{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-1"><i class="fas fa-chart-line"></i> Dashboard</h1>
+        <p class="text-muted">Welcome back! Here's your social media automation overview.</p>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h6 class="card-title text-uppercase small">Total Posts</h6>
+                <h2 class="mb-0" id="total-posts">0</h2>
+                <small class="text-light-50">All time</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h6 class="card-title text-uppercase small">Posted</h6>
+                <h2 class="mb-0" id="posted-count">0</h2>
+                <small class="text-light-50">Published</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <h6 class="card-title text-uppercase small">Scheduled</h6>
+                <h2 class="mb-0" id="scheduled-count">0</h2>
+                <small class="text-light-50">Queued up</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h6 class="card-title text-uppercase small">Pending</h6>
+                <h2 class="mb-0" id="pending-count">0</h2>
+                <small class="text-light-50">To be scheduled</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="row">
+    <!-- Left Column -->
+    <div class="col-lg-8">
+        <!-- Quick Actions -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="btn-group-vertical w-100" role="group">
+                    <a href="{{ url_for('queue') }}" class="btn btn-light text-start">
+                        <i class="fas fa-upload"></i> Upload & Queue New Reel
+                    </a>
+                    <a href="{{ url_for('schedule') }}" class="btn btn-light text-start mt-2">
+                        <i class="fas fa-calendar-plus"></i> View & Manage Schedule
+                    </a>
+                    <a href="{{ url_for('analytics') }}" class="btn btn-light text-start mt-2">
+                        <i class="fas fa-chart-bar"></i> View Analytics & Insights
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Posts -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-history"></i> Recent Posts</h5>
+            </div>
+            <div class="card-body">
+                <div id="recent-posts" class="list-group">
+                    <p class="text-muted text-center py-4">Loading recent posts...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="col-lg-4">
+        <!-- Account Status -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Account Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Instagram Account</label>
+                    <div id="account-status">
+                        <p class="text-muted">Not configured</p>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Followers</label>
+                    <h4 id="follower-count" class="mb-0">—</h4>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Timezone</label>
+                    <p class="mb-0" id="timezone-display">Asia/Kolkata</p>
+                </div>
+                <a href="{{ url_for('settings') }}" class="btn btn-sm btn-primary w-100">
+                    <i class="fas fa-cog"></i> Settings
+                </a>
+            </div>
+        </div>
+
+        <!-- Scheduler Status -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-cog fa-spin"></i> Scheduler</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <span class="badge bg-success">Running</span>
+                    <span id="job-count" class="badge bg-primary">0 jobs</span>
+                </div>
+                <small class="text-muted">Automatic posting enabled. Posts will be posted at scheduled times.</small>
+            </div>
+        </div>
+
+        <!-- Optimal Posting Time -->
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-star"></i> Best Time to Post</h5>
+            </div>
+            <div class="card-body">
+                <div id="optimal-time" class="text-center">
+                    <p class="text-muted mb-0">Loading optimal posting time...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadRecentPosts();
+    loadOptimalTime();
+});
+
+function loadStats() {
+    fetch('/api/stats')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('total-posts').textContent = data.posts.total;
+            document.getElementById('posted-count').textContent = data.posts.posted;
+            document.getElementById('scheduled-count').textContent = data.posts.scheduled;
+            document.getElementById('pending-count').textContent = data.posts.pending;
+            document.getElementById('job-count').textContent = data.scheduler.total_jobs + ' jobs';
+        })
+        .catch(err => console.error('Error loading stats:', err));
+}
+
+function loadRecentPosts() {
+    // This would be implemented to show recent posts
+    // For now, placeholder
+    const container = document.getElementById('recent-posts');
+    container.innerHTML = `
+        <div class="list-group-item">
+            <h6 class="mb-1">No posts yet</h6>
+            <p class="text-muted small mb-0">Upload and schedule your first reel to get started!</p>
+        </div>
+    `;
+}
+
+function loadOptimalTime() {
+    const container = document.getElementById('optimal-time');
+    // This would fetch actual optimal time
+    container.innerHTML = `
+        <h4 class="mb-1">Configure account</h4>
+        <p class="text-muted small">Connect Instagram to see optimal posting times</p>
+    `;
+}
+</script>
+{% endblock %}

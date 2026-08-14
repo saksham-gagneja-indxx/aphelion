@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Social Media Automation{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="mb-1"><i class="fas fa-cog"></i> Settings</h1>
+        <p class="text-muted">Configure your automation preferences</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Instagram Settings -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fab fa-instagram"></i> Instagram Account</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-control" id="instagram-username" disabled>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Connection Status</label>
+                    <div id="instagram-status">
+                        <span class="badge bg-warning">Not Connected</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="reconnect-btn">
+                    <i class="fas fa-link"></i> Reconnect
+                </button>
+            </div>
+        </div>
+
+        <!-- General Settings -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-sliders-h"></i> General Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Timezone</label>
+                    <select class="form-select" id="timezone">
+                        <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                        <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                        <option value="America/New_York">America/New_York (EST)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+                        <option value="Europe/London">Europe/London (GMT)</option>
+                        <option value="Europe/Paris">Europe/Paris (CET)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Account Name</label>
+                    <input type="text" class="form-control" id="account-name" placeholder="My Account">
+                </div>
+            </div>
+        </div>
+
+        <!-- Automation Settings -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-robot"></i> Automation Preferences</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="auto-analyze" checked>
+                    <label class="form-check-label" for="auto-analyze">
+                        Auto-analyze engagement weekly
+                    </label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="enable-captions" checked>
+                    <label class="form-check-label" for="enable-captions">
+                        AI caption generation
+                    </label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="enable-hashtags" checked>
+                    <label class="form-check-label" for="enable-hashtags">
+                        AI hashtag recommendations
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="enable-replies">
+                    <label class="form-check-label" for="enable-replies">
+                        Enable auto-reply (Phase 2)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <button class="btn btn-success btn-lg" id="save-settings">
+            <i class="fas fa-save"></i> Save Settings
+        </button>
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="col-lg-4">
+        <!-- Account Info -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Account Info</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Followers:</strong> <span id="follower-info">—</span></p>
+                <p><strong>Joined:</strong> <span id="join-date">—</span></p>
+                <p><strong>Posts Analyzed:</strong> <span id="posts-analyzed-info">—</span></p>
+            </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Danger Zone</h5>
+            </div>
+            <div class="card-body">
+                <button class="btn btn-outline-danger w-100 mb-2" id="disconnect-btn">
+                    <i class="fas fa-unlink"></i> Disconnect Instagram
+                </button>
+                <button class="btn btn-outline-danger w-100" id="delete-btn">
+                    <i class="fas fa-trash"></i> Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('save-settings').addEventListener('click', saveSettings);
+document.getElementById('reconnect-btn').addEventListener('click', reconnect);
+document.getElementById('disconnect-btn').addEventListener('click', disconnect);
+document.getElementById('delete-btn').addEventListener('click', deleteAccount);
+
+function saveSettings() {
+    const settings = {
+        timezone: document.getElementById('timezone').value,
+        account_name: document.getElementById('account-name').value,
+        preferences: {
+            auto_analyze_engagement: document.getElementById('auto-analyze').checked,
+            enable_caption_generation: document.getElementById('enable-captions').checked,
+            enable_hashtag_recommendations: document.getElementById('enable-hashtags').checked,
+            enable_auto_reply: document.getElementById('enable-replies').checked,
+        }
+    };
+
+    // Would send to API
+    showNotification('Settings saved successfully', 'success');
+}
+
+function reconnect() {
+    alert('Reconnect functionality - would prompt for password');
+}
+
+function disconnect() {
+    if (confirm('Disconnect Instagram? You will need to re-authenticate to post.')) {
+        showNotification('Instagram disconnected', 'warning');
+    }
+}
+
+function deleteAccount() {
+    if (confirm('Delete account? This action cannot be undone.')) {
+        showNotification('Account deleted', 'danger');
+    }
+}
+</script>
+{% endblock %}
