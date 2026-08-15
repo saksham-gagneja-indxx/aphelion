@@ -197,11 +197,14 @@ def linkedin_configured() -> bool:
 def validate_settings() -> bool:
     """Validate configuration required for the app to boot.
 
-    Credentials are deliberately NOT boot-blocking. Instagram auth is only
-    needed when actually posting, and the 24h plan builds/tests the upload
-    pipeline before real credentials are supplied (docs/TIMELINE.md hour 18-21).
-    Missing credentials degrade the relevant feature and are surfaced via
-    /api/status, rather than preventing the server from starting.
+    Platform credentials are deliberately NOT boot-blocking. They are only
+    needed when actually publishing, so a missing or unconfigured platform
+    degrades that one feature and is surfaced through /api/status, rather than
+    preventing the server from starting at all.
+
+    API_ACCESS_KEY is the exception and is checked separately: without it every
+    /api/* request is refused with 503. See docs/ARCHITECTURE.md, "Failing
+    closed".
     """
     try:
         settings = get_settings()

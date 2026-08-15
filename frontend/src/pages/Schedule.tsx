@@ -11,7 +11,9 @@ import {
 import { formatBytes } from '../api/validation'
 import type { Reel } from '../api/types'
 
-// Single local user for v1 - no auth, per docs/TIMELINE.md.
+// TODO: resolve this from the signed-in user (/api/me) rather than hardcoding.
+// This predates authentication, which now exists - the id is still pinned to 1
+// here, so this page only behaves correctly for the first account.
 const USER_ID = 1
 
 /** Local datetime string for <input type="datetime-local">, minutes precision. */
