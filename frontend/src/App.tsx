@@ -7,6 +7,7 @@ import { CurrentUserProvider } from './current-user'
 import { UndoProvider } from './undo'
 import BoltLogo from './components/BoltLogo'
 import Landing from './components/Landing'
+import Assistant from './pages/Assistant'
 import Compose from './pages/Compose'
 import Queue from './pages/Queue'
 import Analytics from './pages/Analytics'
@@ -286,6 +287,8 @@ export default function App() {
   // Settings and Docs deliberately live in the avatar menu rather than here:
   // they are visited rarely, and the nav has to survive a 375px screen.
   const navItems: { to: string; label: string }[] = [
+    // First, because it is the lazy path and the one most people want.
+    { to: '/assistant', label: 'Assistant' },
     { to: '/compose', label: 'New post' },
     { to: '/queue', label: 'Queue' },
     { to: '/analytics', label: 'Analytics' },
@@ -408,6 +411,7 @@ function Shell({
                 <Navigate to={user.linkedin_connected ? '/compose' : '/setup'} replace />
               }
             />
+            <Route path="/assistant" element={<Assistant />} />
             <Route path="/compose" element={<Compose />} />
             {/* Upload and Schedule are one screen now; the old paths are kept
                 so existing links and bookmarks still land somewhere. */}
