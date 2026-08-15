@@ -178,7 +178,11 @@ def create_post():
             caption=data.get("caption"),
             hashtags=data.get("hashtags"),
             status=PostStatus.DRAFT,
-            platform=data.get("platform", PostPlatform.INSTAGRAM),
+            # Defaults to LinkedIn: it is the only platform that can currently
+            # publish. Defaulting to Instagram created posts that were
+            # guaranteed to fail at publish time, since InstagramPublisher is
+            # disabled pending Meta App Review.
+            platform=data.get("platform", PostPlatform.LINKEDIN),
         )
 
         db.add(post)

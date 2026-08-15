@@ -55,8 +55,15 @@ describe('App routing and auth gate', () => {
       expect(screen.getByText('Sign in to Reel Automation')).toBeInTheDocument()
     })
     
-    // The main app layout should NOT be visible
-    expect(screen.queryByText('Reel Automation')).not.toBeInTheDocument() // The header title
+    // The main app layout should NOT be visible.
+    //
+    // Asserting on 'Reel Automation' does not work: the login screen itself
+    // says "Sign in to Reel Automation" with the product name in its own
+    // <span>, so that text is legitimately present. Assert on the navigation
+    // instead, which only exists once the user is signed in.
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+    expect(screen.queryByText('Upload')).not.toBeInTheDocument()
+    expect(screen.queryByText('Queue')).not.toBeInTheDocument()
   })
 
   it('renders app and hides Admin nav for operator', async () => {
