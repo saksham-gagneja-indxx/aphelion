@@ -339,9 +339,10 @@ function Shell({
                 Reel Automation
               </span>
             </div>
-            {/* -mx-7 px-7 lets the row scroll edge-to-edge on a phone instead
-                of being clipped by the header's own padding. */}
-            <nav className="-mx-7 flex items-center gap-1 overflow-x-auto px-7 sm:mx-0 sm:overflow-visible sm:px-0">
+            {/* Scrolls within its own bounds. An earlier -mx-7/px-7 edge-bleed
+                made this 3px wider than the viewport, which scrolled the whole
+                document sideways on a phone. */}
+            <nav className="flex max-w-full items-center gap-1 overflow-x-auto">
               {navItems.map((item) => (
                 <NavLink
                   key={item.to}
