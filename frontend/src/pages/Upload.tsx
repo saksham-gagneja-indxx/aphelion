@@ -78,9 +78,11 @@ export default function Upload() {
   const busy = phase === 'checking' || phase === 'uploading'
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-semibold text-slate-900">Upload a reel</h1>
-      <p className="mt-1 text-sm text-slate-500">
+    <div className="mx-auto max-w-2xl animate-rise-in">
+      <h1 className="font-display text-[34px] leading-tight font-bold tracking-[-.03em] text-lilac-50">
+        Upload a reel
+      </h1>
+      <p className="mt-2 text-[14.5px] text-lilac-50/50">
         MP4, MOV, AVI, MKV or WEBM &middot; up to 90 seconds &middot; max 500&nbsp;MB
       </p>
 
@@ -93,18 +95,35 @@ export default function Upload() {
         onDrop={onDrop}
         onClick={() => !busy && inputRef.current?.click()}
         className={[
-          'mt-6 flex h-56 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition',
-          dragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-white hover:border-slate-400',
+          'relative mt-[26px] flex h-[248px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[18px] border-2 border-dashed backdrop-blur-[12px] transition',
+          dragging
+            ? 'border-violet-400 bg-violet-400/[0.06]'
+            : 'border-lilac-50/[0.16] bg-lilac-50/[0.03] hover:border-violet-400 hover:bg-violet-400/[0.06]',
           busy ? 'pointer-events-none opacity-60' : '',
         ].join(' ')}
       >
-        <svg className="h-10 w-10 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: 'radial-gradient(50% 60% at 50% 45%, rgba(134,59,255,.14), transparent 70%)',
+          }}
+        />
+        <svg
+          className="relative h-[42px] w-[42px] text-violet-400"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.4}
+          viewBox="0 0 24 24"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9m0 0L8.25 12.75M12 9l3.75 3.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
         </svg>
-        <p className="mt-3 text-sm font-medium text-slate-700">
-          Drop a video here, or <span className="text-indigo-600">browse</span>
+        <p className="relative mt-4 text-[14.5px] font-medium text-lilac-50/[0.82]">
+          Drop a video here, or <span className="font-semibold text-lilac-300">browse</span>
         </p>
-        <p className="mt-1 text-xs text-slate-400">Validated locally before upload starts</p>
+        <p className="relative mt-1.5 text-[12.5px] text-lilac-50/38">
+          Validated locally before upload starts
+        </p>
       </div>
 
       <input
@@ -121,29 +140,29 @@ export default function Upload() {
       />
 
       {phase === 'checking' && (
-        <p className="mt-4 text-sm text-slate-600">Checking file&hellip;</p>
+        <p className="mt-4 text-[13.5px] text-lilac-50/62">Checking file&hellip;</p>
       )}
 
       {phase === 'uploading' && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between text-sm text-slate-600">
+        <div className="mt-6 rounded-[14px] border border-lilac-50/[0.08] bg-lilac-50/[0.03] p-[18px]">
+          <div className="flex items-center justify-between text-[13px] text-lilac-50/60">
             <span>Uploading&hellip; {progress}%</span>
             <button
               type="button"
               onClick={() => abortRef.current?.abort()}
-              className="text-slate-500 underline hover:text-slate-700"
+              className="text-lilac-50/45 underline transition hover:text-lilac-50"
             >
               Cancel
             </button>
           </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="mt-[9px] h-[7px] w-full overflow-hidden rounded-pill bg-lilac-50/[0.07]">
             <div
-              className="h-full rounded-full bg-indigo-600 transition-all"
+              className="h-full animate-shimmer rounded-pill bg-[linear-gradient(90deg,#7E14FF,#AA3BFF,#C9A9FF)] bg-[length:260px_100%] transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
           {progress === 100 && (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-[9px] text-xs text-lilac-50/35">
               Transfer complete &mdash; server is validating and generating a thumbnail&hellip;
             </p>
           )}
@@ -151,16 +170,18 @@ export default function Upload() {
       )}
 
       {phase === 'error' && error && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-sm font-medium text-red-800">Upload failed</p>
-          <p className="mt-1 text-sm text-red-700">{error}</p>
+        <div className="mt-6 rounded-[14px] border border-status-failed/[0.28] bg-status-failed/[0.07] p-[18px]">
+          <p className="text-sm font-semibold text-[#FDA4AF]">Upload failed</p>
+          <p className="mt-[5px] text-sm text-[#FDA4AF]/85">{error}</p>
+          {/* The one legal red gradient button in the system — everywhere else
+              destructive is the outlined variant. */}
           <button
             type="button"
             onClick={() => {
               setPhase('idle')
               setError(null)
             }}
-            className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+            className="mt-3.5 rounded-pill bg-[linear-gradient(180deg,#FB7185,#E11D48)] px-[18px] py-[9px] text-[13.5px] font-semibold text-white shadow-[0_4px_18px_rgba(251,113,133,.3)] transition hover:brightness-110"
           >
             Try again
           </button>
@@ -168,21 +189,23 @@ export default function Upload() {
       )}
 
       {phase === 'done' && uploaded && (
-        <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-sm font-medium text-emerald-800">Uploaded</p>
-          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-emerald-900">
-            <dt className="text-emerald-700">File</dt>
-            <dd className="truncate">{uploaded.filename}</dd>
-            <dt className="text-emerald-700">Duration</dt>
-            <dd>
+        <div className="mt-6 rounded-[14px] border border-status-posted/[0.26] bg-status-posted/[0.07] p-[18px]">
+          <p className="text-sm font-semibold text-[#6EE7B7]">Uploaded</p>
+          <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13.5px]">
+            <dt className="text-lilac-50/50">File</dt>
+            <dd className="truncate font-semibold text-lilac-50">{uploaded.filename}</dd>
+            <dt className="text-lilac-50/50">Duration</dt>
+            <dd className="font-semibold text-lilac-50">
               {uploaded.duration_seconds != null
                 ? `${uploaded.duration_seconds.toFixed(1)}s`
                 : 'unknown'}
             </dd>
-            <dt className="text-emerald-700">Size</dt>
-            <dd>{formatBytes(uploaded.size_bytes)}</dd>
-            <dt className="text-emerald-700">Thumbnail</dt>
-            <dd>{uploaded.has_thumbnail ? 'generated' : 'pending'}</dd>
+            <dt className="text-lilac-50/50">Size</dt>
+            <dd className="font-semibold text-lilac-50">{formatBytes(uploaded.size_bytes)}</dd>
+            <dt className="text-lilac-50/50">Thumbnail</dt>
+            <dd className="font-semibold text-lilac-50">
+              {uploaded.has_thumbnail ? 'generated' : 'pending'}
+            </dd>
           </dl>
         </div>
       )}

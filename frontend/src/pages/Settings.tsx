@@ -21,6 +21,11 @@ import { QueryError, QueryPending } from '../components/QueryStates'
 
 const USER_ID = 1
 
+/** Definition row: 12px vertical rhythm, hairline separator between entries. */
+const DEF_ROW =
+  'flex items-center justify-between border-b border-lilac-50/[0.05] py-3'
+const LAST_DEF_ROW = 'flex items-center justify-between py-3'
+
 export default function Settings() {
   const statusQuery = useQuery({
     queryKey: ['status'],
@@ -49,13 +54,15 @@ export default function Settings() {
   const bothSuccess = statusQuery.isSuccess && userQuery.isSuccess
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
-      <p className="mt-1 text-sm text-slate-500">
+    <div className="mx-auto max-w-2xl animate-rise-in">
+      <h1 className="font-display text-[34px] leading-tight font-bold tracking-[-.03em] text-lilac-50">
+        Settings
+      </h1>
+      <p className="mt-2 text-[14.5px] text-lilac-50/50">
         Account and connection configuration
       </p>
 
-      <div className="mt-8 space-y-6">
+      <div className="mt-[30px] space-y-5">
         {/* --- Error state (first branch — never fall through to data) --- */}
         {anyError && (
           <>
@@ -93,67 +100,65 @@ export default function Settings() {
           return (
             <>
               {/* Instagram connection card */}
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-slate-900">Instagram Connection</h2>
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        isConnected && instagramConfigured
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : instagramConfigured
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-1.5 w-1.5 rounded-full ${
-                          isConnected && instagramConfigured
-                            ? 'bg-emerald-500'
-                            : instagramConfigured
-                              ? 'bg-amber-500'
-                              : 'bg-red-500'
-                        }`}
-                      />
-                      {isConnected && instagramConfigured
-                        ? 'Connected'
+              <div className="glass overflow-hidden rounded-[18px]">
+                <div className="flex items-center justify-between border-b border-lilac-50/[0.07] px-5 py-4">
+                  <h2 className="text-sm font-semibold text-lilac-50">Instagram Connection</h2>
+                  <span
+                    className={`inline-flex items-center gap-[7px] rounded-pill border px-3 py-1 text-xs font-semibold ${
+                      isConnected && instagramConfigured
+                        ? 'border-status-posted/30 bg-status-posted/[0.12] text-[#6EE7B7]'
                         : instagramConfigured
-                          ? 'Configured'
-                          : 'Not connected'}
-                    </span>
-                  </div>
+                          ? 'border-status-cancelled/30 bg-status-cancelled/[0.12] text-[#FCD34D]'
+                          : 'border-status-failed/[0.3] bg-status-failed/[0.12] text-[#FDA4AF]'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        isConnected && instagramConfigured
+                          ? 'bg-status-posted'
+                          : instagramConfigured
+                            ? 'bg-status-cancelled'
+                            : 'bg-status-failed'
+                      }`}
+                    />
+                    {isConnected && instagramConfigured
+                      ? 'Connected'
+                      : instagramConfigured
+                        ? 'Configured'
+                        : 'Not connected'}
+                  </span>
                 </div>
 
-                <div className="px-5 py-4">
-                  <dl className="space-y-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <dt className="text-slate-500">Username</dt>
-                      <dd className="font-medium text-slate-900">
+                <div className="px-5 py-1.5">
+                  <dl className="text-[13.5px]">
+                    <div className={DEF_ROW}>
+                      <dt className="text-lilac-50/50">Username</dt>
+                      <dd className="font-semibold text-lilac-50">
                         {username ? `@${username}` : '—'}
                       </dd>
                     </div>
                     {accountName && (
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-500">Account name</dt>
-                        <dd className="font-medium text-slate-900">{accountName}</dd>
+                      <div className={DEF_ROW}>
+                        <dt className="text-lilac-50/50">Account name</dt>
+                        <dd className="font-semibold text-lilac-50">{accountName}</dd>
                       </div>
                     )}
-                    <div className="flex items-center justify-between">
-                      <dt className="text-slate-500">Credentials in .env</dt>
-                      <dd className="font-medium text-slate-900">
+                    <div className={DEF_ROW}>
+                      <dt className="text-lilac-50/50">Credentials in .env</dt>
+                      <dd className="font-semibold text-lilac-50">
                         {instagramConfigured ? 'Yes' : 'No'}
                       </dd>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <dt className="text-slate-500">Authenticated</dt>
-                      <dd className="font-medium text-slate-900">
+                    <div className={DEF_ROW}>
+                      <dt className="text-lilac-50/50">Authenticated</dt>
+                      <dd className="font-semibold text-lilac-50">
                         {isConnected ? 'Yes' : 'No'}
                       </dd>
                     </div>
                     {lastLogin && (
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-500">Last login</dt>
-                        <dd className="text-slate-700">
+                      <div className={LAST_DEF_ROW}>
+                        <dt className="text-lilac-50/50">Last login</dt>
+                        <dd className="text-lilac-50/72">
                           {new Date(lastLogin).toLocaleString()}
                         </dd>
                       </div>
@@ -161,33 +166,33 @@ export default function Settings() {
                   </dl>
                 </div>
 
-                <div className="border-t border-slate-100 px-5 py-3">
+                <div className="flex items-center gap-3.5 border-t border-lilac-50/[0.07] bg-ink-950/30 px-5 py-3.5">
                   <button
                     type="button"
                     onClick={handleReconnect}
-                    className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 transition"
+                    className="rounded-pill bg-[linear-gradient(180deg,#AA3BFF,#7E14FF)] px-[18px] py-[9px] text-[13px] font-semibold text-white shadow-[0_4px_18px_rgba(134,59,255,.35)] transition hover:brightness-110"
                   >
                     Reconnect Instagram
                   </button>
-                  <span className="ml-3 text-xs text-slate-400">Phase 2 — shows alert for now</span>
+                  <span className="text-xs text-lilac-50/32">Phase 2 — shows alert for now</span>
                 </div>
               </div>
 
               {/* General settings */}
               {timezone && (
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-100 px-5 py-4">
-                    <h2 className="text-sm font-semibold text-slate-900">General</h2>
+                <div className="glass overflow-hidden rounded-[18px]">
+                  <div className="border-b border-lilac-50/[0.07] px-5 py-4">
+                    <h2 className="text-sm font-semibold text-lilac-50">General</h2>
                   </div>
-                  <div className="px-5 py-4">
-                    <dl className="space-y-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-500">Timezone</dt>
-                        <dd className="font-medium text-slate-900">{timezone}</dd>
+                  <div className="px-5 pt-1.5 pb-3.5">
+                    <dl className="text-[13.5px]">
+                      <div className={DEF_ROW}>
+                        <dt className="text-lilac-50/50">Timezone</dt>
+                        <dd className="font-semibold text-lilac-50">{timezone}</dd>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <dt className="text-slate-500">User ID</dt>
-                        <dd className="font-mono text-slate-700">{USER_ID}</dd>
+                      <div className={LAST_DEF_ROW}>
+                        <dt className="text-lilac-50/50">User ID</dt>
+                        <dd className="text-lilac-50/72">{USER_ID}</dd>
                       </div>
                     </dl>
                   </div>

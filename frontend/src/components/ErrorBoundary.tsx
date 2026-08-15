@@ -34,11 +34,11 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-          <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-8 text-center shadow-lg">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+        <div className="flex min-h-screen items-center justify-center bg-ink-900 p-6">
+          <div className="glass-overlay w-full max-w-md rounded-[28px] p-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-status-failed/[0.12]">
               <svg
-                className="h-6 w-6 text-red-600"
+                className="h-6 w-6 text-status-failed"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -51,19 +51,21 @@ export class ErrorBoundary extends Component<Props, State> {
                 />
               </svg>
             </div>
-            <h1 className="text-lg font-semibold text-slate-900">Something went wrong</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <h1 className="font-display text-lg font-bold tracking-[-.02em] text-lilac-50">
+              Something went wrong
+            </h1>
+            <p className="mt-2 text-sm text-lilac-50/62">
               An unexpected error occurred while rendering the page.
             </p>
             {this.state.error && (
-              <pre className="mt-4 max-h-40 overflow-auto rounded-lg bg-red-50 p-3 text-left text-xs text-red-700">
+              <pre className="mt-4 max-h-40 overflow-auto rounded-xl border border-status-failed/[0.26] bg-status-failed/[0.09] p-3 text-left text-xs text-[#FDA4AF]">
                 {this.state.error.message}
               </pre>
             )}
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-6 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+              className="mt-6 rounded-pill bg-[linear-gradient(180deg,#AA3BFF,#7E14FF)] px-5 py-2.5 text-sm font-semibold text-white shadow-glow transition hover:brightness-110"
             >
               Reload page
             </button>

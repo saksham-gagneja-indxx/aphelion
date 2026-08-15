@@ -45,11 +45,9 @@ export default function Login() {
 
       <div className="glass-overlay animate-rise relative z-10 w-full max-w-md space-y-8 rounded-[28px] p-10 text-center">
         <div>
-          <div className="flex items-center justify-center gap-2.5">
-            <BoltLogo width={24} height={23} />
-            <span className="font-display text-[15px] font-bold tracking-[-.01em] text-lilac-50">
-              Reel Automation
-            </span>
+          {/* Bolt only, no wordmark — the heading right below already says it. */}
+          <div className="flex justify-center">
+            <BoltLogo width={30} height={29} />
           </div>
           <h2 className="mt-6 font-display text-[30px] leading-tight font-bold tracking-[-.03em] text-lilac-50">
             Sign in to Reel Automation
