@@ -20,7 +20,7 @@
  *   is simply unreachable.
  */
 
-/** Red error banner — backend unreachable or endpoint failure. */
+/** Rose error banner — backend unreachable or endpoint failure. */
 export function QueryError({
   title,
   message,
@@ -29,9 +29,9 @@ export function QueryError({
   message?: string
 }) {
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-      <p className="text-sm font-medium text-red-800">{title}</p>
-      {message && <p className="mt-1 text-sm text-red-700">{message}</p>}
+    <div className="rounded-xl border border-status-failed/[0.26] bg-status-failed/[0.09] px-[15px] py-[13px]">
+      <p className="text-[13.5px] font-semibold text-[#FDA4AF]">{title}</p>
+      {message && <p className="mt-[3px] text-[13px] text-[#FDA4AF]/80">{message}</p>}
     </div>
   )
 }
@@ -39,8 +39,8 @@ export function QueryError({
 /** Loading / pending indicator. */
 export function QueryPending({ label = 'Loading…' }: { label?: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-      <p className="text-sm text-slate-500">{label}</p>
+    <div className="rounded-xl border border-lilac-50/[0.08] bg-lilac-50/[0.03] p-5 text-center text-[13.5px] text-lilac-50/45">
+      {label}
     </div>
   )
 }
@@ -54,9 +54,9 @@ export function QueryEmpty({
   message?: string
 }) {
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
-      <p className="text-sm font-medium text-amber-900">{title}</p>
-      {message && <p className="mt-1 text-sm text-amber-800">{message}</p>}
+    <div className="rounded-xl border border-status-cancelled/[0.24] bg-status-cancelled/[0.08] p-[18px] text-center">
+      <p className="text-[13.5px] font-semibold text-[#FCD34D]">{title}</p>
+      {message && <p className="mt-[3px] text-[13px] text-[#FCD34D]/[0.78]">{message}</p>}
     </div>
   )
 }
