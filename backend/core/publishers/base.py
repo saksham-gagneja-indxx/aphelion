@@ -75,6 +75,19 @@ class Publisher(ABC):
     ) -> PublishResult:
         """Publish a video. Returns a result rather than raising on failure."""
 
+    def delete(self, platform_post_id: str) -> Tuple[bool, str]:
+        """Remove a published post from the platform.
+
+        Returns (success, error_message). Needed for genuine retraction, and
+        for verifying the publish path end-to-end without leaving test content
+        on someone's public profile.
+
+        Default: not supported. Implementations override where the platform
+        allows it - reporting honestly is better than silently doing nothing
+        and letting a caller believe the post is gone.
+        """
+        return False, f"{self.platform} does not support deleting posts via API"
+
     def connection_status(self) -> dict:
         """Describe connection state for /api/status and the Settings page."""
         return {"platform": self.platform, "connected": self.is_connected()}

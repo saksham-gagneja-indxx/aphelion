@@ -357,6 +357,44 @@ class LinkedInPublisher(Publisher):
         )
 
 
+    def delete(self, platform_post_id: str) -> Tuple[bool, str]:
+        """Delete a post via DELETE /rest/posts/{urn}.
+
+        LinkedIn documents deletion as idempotent: deleting an already-deleted
+        post returns 204, so a repeated call is not an error. 404 is treated as
+        success for the same reason - the desired end state is "not published",
+        and it already holds.
+        """
+        if not self.is_connected():
+            return False, "LinkedIn is not connected"
+
+        from urllib.parse import quote
+
+        try:
+            response = requests.delete(
+                f"{API_ROOT}/posts/{quote(platform_post_id, safe='')}",
+                headers=self._headers({"X-RestLi-Method": "DELETE"}),
+                timeout=self.timeout,
+            )
+        except RequestException as e:
+            return False, f"Could not reach LinkedIn: {e}"
+
+        if response.status_code in (200, 204, 404):
+            logger.info(f"🗑️  Deleted LinkedIn post {platform_post_id}")
+            return True, ""
+
+        detail = ""
+        try:
+            detail = response.json().get("message", "")
+        except ValueError:
+            detail = (response.text or "").strip()[:200]
+
+        return False, (
+            f"LinkedIn refused to delete the post (HTTP {response.status_code})"
+            f"{f': {detail}' if detail else ''}"
+        )
+
+
 class _LinkedInApiError(Exception):
     """A LinkedIn API call failed in a way we can describe to the user."""
 
