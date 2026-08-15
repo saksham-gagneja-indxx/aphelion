@@ -463,6 +463,39 @@ and belong to the Instagram era. `authenticate` reports unavailable because
 React + TypeScript + Vite, TanStack Query for server state, Tailwind for
 styling, React Router for navigation.
 
+### Design system — violet / white / black
+
+Structure, type scale and surface treatment are modelled on render.com; the
+accent is the project's own violet, taken from `frontend/public/favicon.svg`.
+Four rules, all enforced by `src/index.css` and `src/ui.ts`:
+
+- **Zero border radius.** Nothing is rounded except dots and avatars. There is
+  no radius token because there is no radius.
+- **Flat surfaces, hairline borders.** `#0D0D0D` cards on a `#0A0A0A` page,
+  separated by 1px `#272727` rules. No glass, no backdrop blur, no shadows.
+- **The primary button is white with black text.** Violet is an accent, never
+  a call to action.
+- **Display type is light (300)**, large and tightly tracked — 80px on the
+  landing hero, 40px on page titles. Body is 16–18px at 1.6.
+
+`src/ui.ts` holds the twelve class-string recipes (buttons, fields, banners,
+type) every screen shares. Add a recipe there rather than re-deriving one.
+
+**Typography is substituted.** render.com uses Roobert and PP Neue Montreal,
+both commercially licensed and unavailable to this project. General Sans and
+Switzer stand in at matching size, weight and tracking, loaded from Fontshare
+(`api.fontshare.com`) — a third-party runtime dependency. If it is slow or
+blocked the page falls back to the system sans and the layout holds, but the
+design does not. Self-host the two woff2 files under `frontend/public/fonts/`
+to remove the dependency.
+
+**Status colour is the one place the palette bends.** Six `PostStatus` values
+collapse to violet, white and black by leaning on fill strength and border
+style — draft and queued outline in grey and white, scheduled tints violet,
+posted fills it, cancelled goes dashed. `failed` keeps a hue of its own
+(`--color-danger`), because surfacing a broken post is the reason the Queue
+screen exists and a monochrome failure does not catch the eye.
+
 ```
 src/api/
   auth.ts          apiFetch — attaches the token, clears it on 401
@@ -536,7 +569,7 @@ Required: `DATABASE_URL`, `API_ACCESS_KEY`, `SECRET_KEY`, `LINKEDIN_CLIENT_ID`,
 |---|---|---|
 | `main` | production — keep green | automatically, on every push |
 | `dev` | integration | nothing |
-| `design` | dark-glass theme, unmerged | nothing |
+| `design` | frontend design work | nothing — merged to `main` when green |
 
 Before merging to `main`:
 
@@ -547,6 +580,23 @@ cd frontend && npx tsc --noEmit && npx vitest run && npm run build
 
 `main` deploys straight to production, so a red build there is a live outage
 waiting on a fix.
+
+**Running the backend gate takes two workarounds** — neither is a code
+problem, but both stop a fresh machine cold:
+
+- `requirements-dev.txt` will not install on Python 3.14: `psycopg2-binary`
+  has no wheel for it and the source build fails. Install the rest without it
+  (the suite does not touch Postgres), or use Python 3.12.
+- Settings validation requires `CLAUDE_API_KEY`, `INSTAGRAM_USERNAME` and
+  `INSTAGRAM_PASSWORD` to be set or 65 tests error at collection. Use the same
+  placeholders `render.yaml` sets:
+
+```bash
+CLAUDE_API_KEY=sk-ant-placeholder-not-used-in-v1 \
+INSTAGRAM_USERNAME=your_instagram_username \
+INSTAGRAM_PASSWORD=your_instagram_password \
+python -m pytest tests/ -q
+```
 
 **Parallel sessions.** Two Claude sessions have worked on this repo
 concurrently with a file-ownership split — backend, API client modules,
