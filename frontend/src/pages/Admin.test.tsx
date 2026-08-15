@@ -92,11 +92,46 @@ describe('Admin page', () => {
       expect(screen.getAllByText(/Admin User/i).length).toBeGreaterThan(0)
     })
     expect(screen.getByText('admin@example.com')).toBeInTheDocument()
-    expect(screen.getByText('Operator User')).toBeInTheDocument()
-    
+    // Twice over: this operator is inactive, so it appears in the approval
+    // queue as well as the users table.
+    expect(screen.getAllByText('Operator User').length).toBe(2)
+
     // Check audit log
     expect(screen.getByText('changed role of')).toBeInTheDocument()
     expect(screen.getByText('Operator User to admin')).toBeInTheDocument()
+  })
+
+  it('lists an inactive account in the approval queue', async () => {
+    mockFetchResponses({
+      '/api/me': { status: 200, body: { id: 1, role: 'admin' } },
+      '/api/admin/users': { status: 200, body: USERS_RESPONSE },
+      '/api/admin/audit': { status: 200, body: AUDIT_RESPONSE },
+    })
+
+    renderWithQuery(<Admin />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Waiting for approval')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+
+  it('hides the approval queue when every account is active', async () => {
+    mockFetchResponses({
+      '/api/me': { status: 200, body: { id: 1, role: 'admin' } },
+      '/api/admin/users': {
+        status: 200,
+        body: { users: USERS_RESPONSE.users.map((u) => ({ ...u, is_active: true })) },
+      },
+      '/api/admin/audit': { status: 200, body: AUDIT_RESPONSE },
+    })
+
+    renderWithQuery(<Admin />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Admin Panel')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Waiting for approval')).not.toBeInTheDocument()
   })
 
   it('shows error banner when admin data fails to load', async () => {

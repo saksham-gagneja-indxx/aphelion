@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { getMe, logout, onSessionChangedInAnotherTab, type User } from './api/auth'
+import { getAdminStats } from './api/admin'
 import { CurrentUserProvider } from './current-user'
 import BoltLogo from './components/BoltLogo'
 import Landing from './components/Landing'
@@ -275,7 +276,7 @@ export default function App() {
 
   // Settings and Docs deliberately live in the avatar menu rather than here:
   // they are visited rarely, and the nav has to survive a 375px screen.
-  const navItems = [
+  const navItems: { to: string; label: string }[] = [
     { to: '/upload', label: 'Upload' },
     { to: '/schedule', label: 'Schedule' },
     { to: '/queue', label: 'Queue' },
@@ -285,6 +286,33 @@ export default function App() {
   if (user.role === 'admin') {
     navItems.push({ to: '/admin', label: 'Admin' })
   }
+
+  return <Shell user={user} navItems={navItems} />
+}
+
+/**
+ * The signed-in chrome.
+ *
+ * Split out of App so the pending-approval poll can be a hook without running
+ * before the auth checks above have decided whether there is a user at all.
+ */
+function Shell({
+  user,
+  navItems,
+}: {
+  user: User
+  navItems: { to: string; label: string }[]
+}) {
+  // New accounts land inactive and nothing else announces them, so without
+  // this an admin only discovers a waiting user by opening the panel on spec.
+  const { data: stats } = useQuery({
+    queryKey: ['admin', 'stats'],
+    queryFn: getAdminStats,
+    enabled: user.role === 'admin',
+    refetchInterval: 60_000,
+    retry: false,
+  })
+  const pendingApprovals = stats?.users.pending_approval ?? 0
 
   return (
     <div className="relative min-h-full bg-ink-950">
@@ -302,7 +330,9 @@ export default function App() {
                 Reel Automation
               </span>
             </div>
-            <nav className="flex items-center gap-1">
+            {/* -mx-7 px-7 lets the row scroll edge-to-edge on a phone instead
+                of being clipped by the header's own padding. */}
+            <nav className="-mx-7 flex items-center gap-1 overflow-x-auto px-7 sm:mx-0 sm:overflow-visible sm:px-0">
               {navItems.map((item) => (
                 <NavLink
                   key={item.to}
@@ -310,7 +340,7 @@ export default function App() {
                   /* Active is a violet underline, not a filled chip — the fill
                      treatment belongs to the primary button alone. */
                   className={({ isActive }) =>
-                    `border-b-2 px-3 py-1.5 text-[15px] whitespace-nowrap transition ${
+                    `flex shrink-0 items-center gap-2 border-b-2 px-3 py-1.5 text-[15px] whitespace-nowrap transition ${
                       isActive
                         ? 'border-violet-500 text-mist-50'
                         : 'border-transparent text-mist-500 hover:text-mist-50'
@@ -318,6 +348,14 @@ export default function App() {
                   }
                 >
                   {item.label}
+                  {item.to === '/admin' && pendingApprovals > 0 && (
+                    <span
+                      title={`${pendingApprovals} account(s) waiting for approval`}
+                      className="inline-flex min-w-[18px] items-center justify-center border border-violet-500/50 bg-violet-900 px-1 text-[12px] text-violet-200"
+                    >
+                      {pendingApprovals}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </nav>

@@ -24,6 +24,19 @@ export interface AuditLogEvent {
   created_at: string
 }
 
+export interface AdminStats {
+  users: {
+    total: number
+    active: number
+    pending_approval: number
+    linkedin_connected: number
+  }
+  posts: {
+    total: number
+    by_status: Record<string, number>
+  }
+}
+
 async function toError(res: Response): Promise<Error> {
   try {
     const body = await res.json()
@@ -59,6 +72,19 @@ export async function updateUserActive(id: number, is_active: boolean): Promise<
     body: JSON.stringify({ is_active }),
   })
   if (!res.ok) throw await toError(res)
+}
+
+/**
+ * Fleet-wide counts. Used for the pending-approval badge, which is how an
+ * administrator finds out someone is waiting — nothing else tells them.
+ */
+export async function getAdminStats(): Promise<AdminStats> {
+  const res = await apiFetch('/api/admin/stats')
+  if (!res.ok) {
+    if (res.status === 403) throw new Error('Forbidden')
+    throw await toError(res)
+  }
+  return res.json()
 }
 
 export async function getAuditLogs(limit: number = 100): Promise<{ events: AuditLogEvent[] }> {

@@ -3,7 +3,7 @@ Database connection and initialization for Social Media Automation Agent
 Uses SQLAlchemy ORM for database abstraction
 """
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from sqlalchemy.pool import StaticPool
 from pathlib import Path
@@ -26,6 +26,33 @@ def _normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
         return "postgresql://" + url[len("postgres://"):]
     return url
+
+
+def _is_memory_url(url: str) -> bool:
+    """True for an in-memory SQLite URL, which needs different pooling."""
+    return ":memory:" in url or url.rstrip("/").endswith("sqlite:")
+
+
+def _enable_sqlite_concurrency(engine) -> None:
+    """Put file-backed SQLite into WAL so readers do not block on a writer.
+
+    The default rollback journal takes an exclusive lock for the duration of a
+    write, so a single upload or scheduler tick stalls every concurrent read.
+    WAL lets readers continue against the last committed state, which is what
+    makes several parallel API calls behave.
+    """
+
+    @event.listens_for(engine, "connect")
+    def _set_pragmas(dbapi_connection, _record):  # pragma: no cover - trivial
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            # Belt and braces with connect_args["timeout"]: applies to the
+            # connection itself rather than the driver's own wait loop.
+            cursor.execute("PRAGMA busy_timeout=30000")
+        finally:
+            cursor.close()
 
 
 def _safe_url(url: str) -> str:
@@ -59,13 +86,42 @@ class Database:
         try:
             # Create engine
             if "sqlite" in database_url:
-                # SQLite specific configuration
-                self.engine = create_engine(
-                    database_url,
-                    connect_args={"check_same_thread": False},
-                    poolclass=StaticPool,
-                    echo=settings.db_echo
-                )
+                # check_same_thread=False is required either way: the pool can
+                # hand a connection to a different thread than opened it, which
+                # SQLite's own guard would reject.
+                connect_args = {"check_same_thread": False}
+
+                if _is_memory_url(database_url):
+                    # StaticPool ONLY for in-memory: each new connection to
+                    # ":memory:" is a separate, empty database, so every
+                    # session has to share the one connection.
+                    self.engine = create_engine(
+                        database_url,
+                        connect_args=connect_args,
+                        poolclass=StaticPool,
+                        echo=settings.db_echo,
+                    )
+                else:
+                    # File-backed: pool normally, so each thread gets its OWN
+                    # connection.
+                    #
+                    # This was StaticPool, which meant every concurrent request
+                    # drove the SAME sqlite3 connection. Two threads issuing
+                    # statements on one connection interleave their transactions,
+                    # and it surfaced as "bad parameter or other API misuse",
+                    # "cannot commit - no transaction is active", and rows read
+                    # back as garbage ("Invalid isoformat string: ''"). Any page
+                    # that fires several API calls at once could trip it.
+                    #
+                    # timeout makes a writer wait for a competing write rather
+                    # than failing instantly with "database is locked".
+                    connect_args["timeout"] = 30
+                    self.engine = create_engine(
+                        database_url,
+                        connect_args=connect_args,
+                        echo=settings.db_echo,
+                    )
+                    _enable_sqlite_concurrency(self.engine)
             else:
                 # PostgreSQL and other databases
                 self.engine = create_engine(

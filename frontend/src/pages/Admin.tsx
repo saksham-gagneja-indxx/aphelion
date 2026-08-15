@@ -8,7 +8,7 @@ import {
   type AdminUser,
 } from '../api/admin'
 import { QueryError, QueryPending } from '../components/QueryStates'
-import { EYEBROW, H1, H2, META, SUB } from '../ui'
+import { BTN_PRIMARY, EYEBROW, H1, H2, META, SUB } from '../ui'
 
 /** Shared track for the users "table" — header and body rows must agree. */
 const GRID_COLS = 'grid grid-cols-[1.5fr_1.8fr_1.1fr_1fr_.6fr_1.4fr_.7fr]'
@@ -33,8 +33,10 @@ export default function Admin() {
     mutationFn: ({ id, role }: { id: number; role: 'admin' | 'operator' }) =>
       updateUserRole(id, role),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
-      queryClient.invalidateQueries({ queryKey: ['admin', 'audit'] })
+      // Prefix match, so the pending-approval badge in the nav refreshes too.
+      // Invalidating 'users' and 'audit' by name left it showing a stale count
+      // after an approval.
+      queryClient.invalidateQueries({ queryKey: ['admin'] })
     },
   })
 
@@ -42,8 +44,10 @@ export default function Admin() {
     mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
       updateUserActive(id, is_active),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
-      queryClient.invalidateQueries({ queryKey: ['admin', 'audit'] })
+      // Prefix match, so the pending-approval badge in the nav refreshes too.
+      // Invalidating 'users' and 'audit' by name left it showing a stale count
+      // after an approval.
+      queryClient.invalidateQueries({ queryKey: ['admin'] })
     },
   })
 
@@ -92,6 +96,57 @@ export default function Admin() {
 
       {bothSuccess && (
         <>
+          {/* Approval queue first: it is the only part of this page that is
+              blocking someone else, so it should not be below a long table. */}
+          {(() => {
+            const pending = usersQuery.data.users.filter((u: AdminUser) => !u.is_active)
+            if (pending.length === 0) return null
+
+            return (
+              <div className="surface border-violet-500/40">
+                <div className="flex items-center justify-between border-b border-line bg-ink-950 px-5 py-4">
+                  <h2 className={H2}>Waiting for approval</h2>
+                  <span className="inline-flex items-center border border-violet-500/50 bg-violet-900 px-2.5 py-0.5 text-[13px] text-violet-200">
+                    {pending.length}
+                  </span>
+                </div>
+                <p className="border-b border-line px-5 py-3 text-[15px] text-mist-500">
+                  These accounts have signed in with LinkedIn but cannot use the tool
+                  until you approve them.
+                </p>
+                <ul className="divide-y divide-line">
+                  {pending.map((user: AdminUser) => (
+                    <li
+                      key={user.id}
+                      className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[16px] text-mist-50">{user.name}</p>
+                        <p className="truncate text-[14px] text-mist-500">{user.email}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            activeMutation.mutate({ id: user.id, is_active: true })
+                          }
+                          disabled={activeMutation.isPending}
+                          className={BTN_PRIMARY}
+                        >
+                          Approve
+                        </button>
+                        {/* No reject: leaving the account inactive already
+                            denies it everything, and deleting would lose the
+                            audit trail of the attempt. */}
+                        <span className={META}>or leave pending</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
+
           <div className="surface">
             <div className="border-b border-line bg-ink-950 px-5 py-4">
               <h2 className={H2}>Users</h2>
