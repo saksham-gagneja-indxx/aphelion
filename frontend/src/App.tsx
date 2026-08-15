@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getMe, logout, onSessionChangedInAnotherTab, type User } from './api/auth'
 import { getAdminStats } from './api/admin'
 import { CurrentUserProvider } from './current-user'
+import { UndoProvider } from './undo'
 import BoltLogo from './components/BoltLogo'
 import Landing from './components/Landing'
 import Upload from './pages/Upload'
@@ -368,6 +369,7 @@ function Shell({
         {/* Every page below reads its user id from here rather than hardcoding
             one, so the tool acts on whoever is actually signed in. */}
         <CurrentUserProvider user={user}>
+          <UndoProvider>
           <Routes>
             <Route path="/" element={<Navigate to="/upload" replace />} />
             <Route path="/upload" element={<Upload />} />
@@ -378,6 +380,7 @@ function Shell({
             <Route path="/docs" element={<Docs />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
+          </UndoProvider>
         </CurrentUserProvider>
       </main>
     </div>

@@ -74,6 +74,30 @@ export function cancelPost(postId: number): Promise<{ message: string }> {
 }
 
 /**
+ * Remove a post entirely. Cancelling leaves it visible as 'cancelled', which
+ * is the right default; this is for clearing it out afterwards.
+ *
+ * `init` carries keepalive when the deletion is flushed during pagehide — see
+ * undo.tsx. Without it the browser drops the request as the document unloads.
+ */
+export async function deletePost(postId: number, init?: RequestInit): Promise<void> {
+  const res = await apiFetch(`/api/posts/${postId}/delete`, { method: 'DELETE', ...init })
+  if (!res.ok) throw await toError(res)
+}
+
+export async function deleteReel(
+  userId: number,
+  filename: string,
+  init?: RequestInit,
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/users/${userId}/reels/${encodeURIComponent(filename)}`,
+    { method: 'DELETE', ...init },
+  )
+  if (!res.ok) throw await toError(res)
+}
+
+/**
  * Build a thumbnail URL.
  *
  * thumbnail_path from the backend is a relative filesystem path like

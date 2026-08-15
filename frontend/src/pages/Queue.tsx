@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   cancelPost,
+  deletePost,
   getPosts,
   thumbnailUrl,
   type Post,
@@ -18,6 +19,7 @@ import {
 } from '../api/queue'
 import { QueryError, QueryPending, QueryEmpty } from '../components/QueryStates'
 import { useUserId } from '../current-user'
+import { useUndo } from '../undo'
 import { BANNER_DANGER, BANNER_OK, BTN_QUIET, H1, META, SUB } from '../ui'
 
 const ALL_STATUSES: PostStatus[] = ['draft', 'queued', 'scheduled', 'posted', 'failed', 'cancelled']
@@ -89,10 +91,12 @@ function formatWhen(iso: string | null): string {
 function PostCard({
   post,
   onCancel,
+  onDelete,
   isCancelling,
 }: {
   post: Post
   onCancel: (id: number) => void
+  onDelete: (post: Post) => void
   isCancelling: boolean
 }) {
   const USER_ID = useUserId()
@@ -144,16 +148,32 @@ function PostCard({
             {post.video_duration != null && (
               <span className={META}>{post.video_duration.toFixed(1)}s</span>
             )}
-            {isScheduled && (
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              {isScheduled && (
+                <button
+                  type="button"
+                  onClick={() => onCancel(post.id)}
+                  disabled={isCancelling}
+                  className="border border-line px-3 py-1 text-[14px] text-mist-500 transition hover:border-danger/50 hover:text-danger disabled:opacity-40"
+                >
+                  {isCancelling ? 'Cancelling…' : 'Cancel'}
+                </button>
+              )}
+              {/* No confirm dialog: the 15-second undo window is the
+                  confirmation, and it does not interrupt anyone who meant it. */}
               <button
                 type="button"
-                onClick={() => onCancel(post.id)}
-                disabled={isCancelling}
-                className="ml-auto shrink-0 border border-line px-3 py-1 text-[14px] text-mist-500 transition hover:border-danger/50 hover:text-danger disabled:opacity-40"
+                onClick={() => onDelete(post)}
+                aria-label="Delete post"
+                title="Delete post"
+                className="border border-line p-1.5 text-mist-500 transition hover:border-danger/50 hover:text-danger"
               >
-                {isCancelling ? 'Cancelling…' : 'Cancel'}
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                </svg>
               </button>
-            )}
+            </span>
           </div>
 
           <p className="mt-3 line-clamp-2 text-[16px] leading-[1.5] text-mist-50">
@@ -233,7 +253,28 @@ export default function Queue() {
     },
   })
 
-  const posts = query.data?.posts ?? []
+  const { pendingKeys, scheduleDelete } = useUndo()
+
+  const handleDelete = (post: Post) => {
+    scheduleDelete({
+      key: `post:${post.id}`,
+      label: post.caption?.trim()
+        ? `Deleted “${post.caption.trim().slice(0, 40)}”`
+        : 'Post deleted',
+      commit: (init) => deletePost(post.id, init),
+      // Refetch either way: on commit the row is gone, and on undo the list
+      // still needs to stop hiding it.
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ['posts', USER_ID] })
+        queryClient.invalidateQueries({ queryKey: ['scheduledJobs', USER_ID] })
+      },
+    })
+  }
+
+  const posts = (query.data?.posts ?? []).filter(
+    // Hidden immediately so the delete feels instant, but not yet sent.
+    (p) => !pendingKeys.has(`post:${p.id}`),
+  )
   const filtered = (filter === 'all' ? posts : posts.filter((p) => p.status === filter)).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
@@ -349,6 +390,7 @@ export default function Queue() {
                     key={post.id}
                     post={post}
                     onCancel={(id) => cancelMutation.mutate(id)}
+                    onDelete={handleDelete}
                     isCancelling={cancelMutation.isPending}
                   />
                 ))}

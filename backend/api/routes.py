@@ -432,6 +432,53 @@ def cancel_post(post_id):
         return jsonify({"error": str(e)}), 500
 
 
+@api_bp.route("/posts/<int:post_id>/delete", methods=["DELETE"])
+def delete_post(post_id):
+    """Remove a post entirely, cancelling its scheduled job first.
+
+    Distinct from cancel: cancelling leaves the record visible with a
+    'cancelled' status, which is the right default because it preserves what
+    was attempted. This is for clearing it out of the list afterwards.
+
+    The scheduler job is cancelled BEFORE the row is deleted. The other order
+    leaves a job pointing at a post id that no longer exists, which fires and
+    fails at publish time.
+    """
+    db = get_session()
+    try:
+        post = db.query(Post).filter(Post.id == post_id).first()
+        if not post:
+            return jsonify({"error": "Post not found"}), 404
+
+        denied = require_user_access(post.user_id)
+        if denied:
+            return denied
+
+        was_scheduled = post.status in (PostStatus.QUEUED, PostStatus.SCHEDULED)
+    finally:
+        db.close()
+
+    if was_scheduled:
+        try:
+            get_scheduler().cancel_post(post_id)
+        except Exception as e:
+            # A missing job is fine - it may already have run or been cancelled.
+            logger.warning(f"Could not cancel job for post {post_id}: {e}")
+
+    db = get_session()
+    try:
+        post = db.query(Post).filter(Post.id == post_id).first()
+        if post is None:
+            return jsonify({"success": True, "message": "Post already removed"}), 200
+        db.delete(post)
+        db.commit()
+    finally:
+        db.close()
+
+    logger.info(f"Deleted post {post_id}")
+    return jsonify({"success": True, "deleted": post_id}), 200
+
+
 @api_bp.route("/users/<int:user_id>/posts", methods=["GET"])
 def get_user_posts(user_id):
     """Get all posts for a user"""
@@ -550,6 +597,68 @@ def get_user_reels(user_id):
 
     except Exception as e:
         logger.error(f"Error getting user reels: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/users/<int:user_id>/reels/<path:filename>", methods=["DELETE"])
+def delete_reel(user_id, filename):
+    """Delete one of a user's uploaded reels, and its thumbnail.
+
+    Refuses while a post still references the file: deleting it would leave a
+    scheduled post pointing at nothing, which fails at publish time - long
+    after the mistake, and with no obvious cause.
+    """
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
+    try:
+        reel_manager = get_reel_manager()
+        user_folder = (reel_manager.reels_folder / str(user_id)).resolve()
+
+        # Same guard as the thumbnail route: resolve, then confirm the result
+        # is still inside this user's folder so a crafted name cannot walk out.
+        candidate = (user_folder / filename).resolve()
+        if not candidate.is_relative_to(user_folder):
+            return jsonify({"error": "Invalid filename"}), 400
+
+        if not candidate.exists():
+            return jsonify({"error": "Reel not found"}), 404
+
+        db = get_session()
+        try:
+            blocking = (
+                db.query(Post)
+                .filter(
+                    Post.user_id == user_id,
+                    Post.video_path.like(f"%{candidate.name}"),
+                    # Anything not yet published still needs the file.
+                    Post.status.in_([
+                        PostStatus.DRAFT,
+                        PostStatus.QUEUED,
+                        PostStatus.SCHEDULED,
+                    ]),
+                )
+                .count()
+            )
+            if blocking:
+                return jsonify({
+                    "error": f"This reel is used by {blocking} scheduled post(s). "
+                             f"Cancel them first."
+                }), 409
+        finally:
+            db.close()
+
+        candidate.unlink()
+        thumbnail = candidate.with_suffix(".jpg")
+        if thumbnail.exists():
+            thumbnail.unlink()
+
+        logger.info(f"Deleted reel {candidate.name} for user {user_id}")
+        return jsonify({"success": True, "deleted": candidate.name}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting reel: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 

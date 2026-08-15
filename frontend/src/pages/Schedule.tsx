@@ -8,8 +8,10 @@ import {
   schedulePost,
   thumbnailUrl,
 } from '../api/schedule'
+import { deleteReel } from '../api/queue'
 import { formatBytes } from '../api/validation'
 import type { Reel } from '../api/types'
+import { useUndo } from '../undo'
 import CaptionAssist from '../components/CaptionAssist'
 import {
   BANNER_DANGER,
@@ -134,7 +136,25 @@ export default function Schedule() {
     scheduleMutation.mutate()
   }
 
-  const reels = reelsQuery.data?.reels ?? []
+  const { pendingKeys, scheduleDelete } = useUndo()
+
+  const handleDeleteReel = (reel: Reel) => {
+    // Clear the selection if the thing being deleted is what is selected,
+    // otherwise the form below stays armed with a file that is going away.
+    setSelected((current) => (current?.path === reel.path ? null : current))
+    scheduleDelete({
+      key: `reel:${reel.filename}`,
+      label: `Deleted ${reel.filename}`,
+      commit: (init) => deleteReel(USER_ID, reel.filename, init),
+      onSettled: () => {
+        void queryClient.invalidateQueries({ queryKey: ['reels', USER_ID] })
+      },
+    })
+  }
+
+  const reels = (reelsQuery.data?.reels ?? []).filter(
+    (r) => !pendingKeys.has(`reel:${r.filename}`),
+  )
   const jobs = jobsQuery.data?.jobs ?? []
 
   return (
@@ -185,7 +205,22 @@ export default function Schedule() {
             {reels.map((reel) => {
               const isSelected = selected?.path === reel.path
               return (
-                <li key={reel.path}>
+                <li key={reel.path} className="relative">
+                  {/* Overlaid rather than inside the card button: a <button>
+                      cannot legally contain another one, and nesting them
+                      breaks the click target in Safari. */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteReel(reel)}
+                    aria-label={`Delete ${reel.filename}`}
+                    title="Delete reel"
+                    className="absolute right-2 top-2 z-10 border border-line bg-ink-950/80 p-1.5 text-mist-500 backdrop-blur transition hover:border-danger/50 hover:text-danger"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                    </svg>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSelected(isSelected ? null : reel)}
