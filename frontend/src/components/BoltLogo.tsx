@@ -8,10 +8,13 @@
 export default function BoltLogo({
   width = 19,
   height = 18,
+  /** Glow radius in px — 10 at nav size, 12 on the landing hero. */
+  glow = 10,
   className = '',
 }: {
   width?: number
   height?: number
+  glow?: number
   className?: string
 }) {
   return (
@@ -21,7 +24,8 @@ export default function BoltLogo({
       viewBox="0 0 48 46"
       fill="none"
       aria-hidden="true"
-      className={`block [filter:drop-shadow(0_0_10px_rgb(134_59_255/0.6))] ${className}`}
+      className={`block ${className}`}
+      style={{ filter: `drop-shadow(0 0 ${glow}px rgba(134,59,255,.65))` }}
     >
       <path
         fill="#863BFF"

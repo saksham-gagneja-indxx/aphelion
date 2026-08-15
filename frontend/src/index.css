@@ -47,11 +47,16 @@
   --shadow-raised:  0 8px 30px rgb(0 0 0 / .35);
   --shadow-overlay: inset 0 1px 0 rgb(237 230 255 / .16), 0 20px 50px rgb(0 0 0 / .5);
 
-  --animate-rise:    rise .7s cubic-bezier(.22,1,.36,1) both;
-  --animate-rise-in: rise-in .5s cubic-bezier(.22,1,.36,1) both;
-  --animate-drift-a: drift-a 26s ease-in-out infinite;
-  --animate-drift-b: drift-b 32s ease-in-out infinite;
-  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-rise:       rise .7s cubic-bezier(.22,1,.36,1) both;
+  --animate-rise-slow:  rise .9s cubic-bezier(.22,1,.36,1) both;
+  --animate-rise-in:    rise-in .5s cubic-bezier(.22,1,.36,1) both;
+  --animate-fade-in:    fade-in .8s ease both;
+  --animate-drift-a:    drift-a 26s ease-in-out infinite;
+  --animate-drift-b:    drift-b 32s ease-in-out infinite;
+  --animate-drift-c:    drift-c 25s ease-in-out infinite;
+  --animate-shimmer:    shimmer 1.4s linear infinite;
+  --animate-glow-pulse: glow-pulse 3.6s ease-in-out infinite;
+  --animate-blink:      blink 2s ease-in-out infinite;
 }
 
 @keyframes rise {
@@ -78,9 +83,31 @@
   100% { transform: translate3d(0,0,0) scale(1.1); }
 }
 
+@keyframes drift-c {
+  0%   { transform: translate3d(0,0,0); }
+  50%  { transform: translate3d(60px,70px,0); }
+  100% { transform: translate3d(0,0,0); }
+}
+
 @keyframes shimmer {
   from { background-position: -260px 0; }
   to   { background-position: 260px 0; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Halo breathing out of the hero's primary CTA. */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 8px 28px rgb(134 59 255 / .42), 0 0 0 0 rgb(170 59 255 / .30); }
+  50%      { box-shadow: 0 10px 38px rgb(134 59 255 / .60), 0 0 0 10px rgb(170 59 255 / 0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .25; }
 }
 
 /* Surface recipes — the three legal glass levels.

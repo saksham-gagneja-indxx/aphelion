@@ -52,11 +52,14 @@ describe('App routing and auth gate', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Sign in to Reel Automation')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
     })
-    
-    // The main app layout should NOT be visible
-    expect(screen.queryByText('Reel Automation')).not.toBeInTheDocument() // The header title
+
+    // The signed-out landing page, not the app
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Schedule once.')
+    // The main app layout should NOT be visible. The landing page carries the
+    // same wordmark, so assert on the app nav instead of the brand.
+    expect(screen.queryByRole('link', { name: 'Queue' })).not.toBeInTheDocument()
   })
 
   it('renders app and hides Admin nav for operator', async () => {

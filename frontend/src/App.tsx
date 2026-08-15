@@ -2,7 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getMe, logout, type User } from './api/auth'
 import BoltLogo from './components/BoltLogo'
-import Login from './components/Login'
+import Landing from './components/Landing'
 import Upload from './pages/Upload'
 import Schedule from './pages/Schedule'
 import Queue from './pages/Queue'
@@ -130,9 +130,9 @@ export default function App() {
     )
   }
 
-  // If 401 Unauthorized, show Login gate
+  // If 401 Unauthorized, show the landing page — it is also the sign-in gate
   if (isError && error.message === 'Unauthorized') {
-    return <Login />
+    return <Landing />
   }
 
   // If 403 Forbidden, show awaiting approval
