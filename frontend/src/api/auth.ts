@@ -98,8 +98,36 @@ export interface LinkedInStatus {
   connected: boolean
   person_urn: string | null
   email: string | null
+  /**
+   * Whether the grant actually carries w_member_social. Signing in
+   * successfully says nothing about this: without the "Share on LinkedIn"
+   * product the account connects fine and every publish then fails.
+   */
+  can_publish: boolean
+  granted_scopes: string[] | null
   token_expires_at: string | null
   token_expired: boolean
+}
+
+export interface SetupStep {
+  id: 'app' | 'redirect' | 'connect' | 'publish'
+  title: string
+  done: boolean
+  detail: string | null
+}
+
+export interface SetupState {
+  steps: SetupStep[]
+  complete: boolean
+  redirect_uri: string
+  is_admin: boolean
+}
+
+/** What the caller still has to do before they can publish. */
+export async function getSetupState(): Promise<SetupState> {
+  const res = await apiFetch('/api/setup/state')
+  if (!res.ok) throw await toError(res)
+  return res.json()
 }
 
 /** Storage key holding the session token. Shared across same-origin tabs. */

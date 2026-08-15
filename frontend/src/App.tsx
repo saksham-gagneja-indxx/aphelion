@@ -13,6 +13,7 @@ import Queue from './pages/Queue'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 import Docs from './pages/Docs'
+import Setup from './pages/Setup'
 import Admin from './pages/Admin'
 import { BANNER_DANGER, BTN_OUTLINE } from './ui'
 
@@ -169,6 +170,13 @@ function UserMenu({ user }: { user: User }) {
             </div>
 
             <NavLink
+              to="/setup"
+              role="menuitem"
+              className="block px-4 py-3 text-[15px] text-mist-200 transition hover:bg-ink-900 hover:text-mist-50"
+            >
+              Setup guide
+            </NavLink>
+            <NavLink
               to="/settings"
               role="menuitem"
               className="block px-4 py-3 text-[15px] text-mist-200 transition hover:bg-ink-900 hover:text-mist-50"
@@ -306,6 +314,8 @@ function Shell({
 }) {
   // New accounts land inactive and nothing else announces them, so without
   // this an admin only discovers a waiting user by opening the panel on spec.
+  const location = useLocation()
+
   const { data: stats } = useQuery({
     queryKey: ['admin', 'stats'],
     queryFn: getAdminStats,
@@ -365,19 +375,46 @@ function Shell({
         </div>
       </header>
 
+      {/* An unconnected account can navigate anywhere, but nothing it does
+          will publish, so the reason follows it around rather than being
+          discoverable only from the page it happens to be on. */}
+      {!user.linkedin_connected && location.pathname !== '/setup' && (
+        <div className="relative z-10 border-b border-violet-500/30 bg-violet-500/[0.07]">
+          <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-x-4 gap-y-2 px-7 py-3">
+            <p className="text-[15px] text-violet-200">
+              LinkedIn is not connected yet — posts cannot be published.
+            </p>
+            <NavLink
+              to="/setup"
+              className="text-[15px] text-mist-50 underline underline-offset-2 hover:text-violet-200"
+            >
+              Finish setup
+            </NavLink>
+          </div>
+        </div>
+      )}
+
       <main className="relative z-10 px-7 pt-14 pb-20">
         {/* Every page below reads its user id from here rather than hardcoding
             one, so the tool acts on whoever is actually signed in. */}
         <CurrentUserProvider user={user}>
           <UndoProvider>
           <Routes>
-            <Route path="/" element={<Navigate to="/upload" replace />} />
+            {/* A first-time account lands on setup rather than an upload form
+                it cannot publish from. */}
+            <Route
+              path="/"
+              element={
+                <Navigate to={user.linkedin_connected ? '/upload' : '/setup'} replace />
+              }
+            />
             <Route path="/upload" element={<Upload />} />
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/queue" element={<Queue />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/docs" element={<Docs />} />
+            <Route path="/setup" element={<Setup />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
           </UndoProvider>

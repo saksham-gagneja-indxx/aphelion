@@ -53,6 +53,13 @@ class User(Base):
     # Access tokens last ~60 days, refresh tokens ~365. Stored so the UI can
     # warn before expiry instead of discovering it when a scheduled post fires.
     linkedin_token_expires_at = Column(DateTime, nullable=True)
+    # Scopes LinkedIn actually granted, space separated, as returned with the
+    # token. Stored because sign-in succeeding says nothing about whether
+    # publishing will: if the "Share on LinkedIn" product was never added to
+    # the app, the member consents, signs in perfectly, and every publish then
+    # fails on a missing w_member_social. This lets that be said up front
+    # rather than discovered when a scheduled post fires.
+    linkedin_scope = Column(String(500), nullable=True)
 
     # Account settings
     timezone = Column(String(50), default="Asia/Kolkata")
@@ -154,6 +161,7 @@ class User(Base):
         person_urn: str,
         expires_at=None,
         refresh_token: str = None,
+        scope: str = None,
     ):
         """Record an OAuth grant from the LinkedIn callback."""
         self.linkedin_access_token = access_token
@@ -161,6 +169,8 @@ class User(Base):
         self.linkedin_token_expires_at = expires_at
         if refresh_token:
             self.linkedin_refresh_token = refresh_token
+        if scope is not None:
+            self.linkedin_scope = scope
         self.linkedin_connected = True
         self.linkedin_connected_at = utcnow()
         self.updated_at = utcnow()
@@ -181,6 +191,20 @@ class User(Base):
         if self.linkedin_token_expires_at is None:
             return True
         return self.linkedin_token_expires_at > utcnow()
+
+    def can_publish_to_linkedin(self) -> bool:
+        """True when the grant actually carries publishing rights.
+
+        Unknown scope is treated as capable: grants stored before this column
+        existed have none recorded, and reporting those accounts as unable to
+        post would be wrong in the common case. A genuinely missing scope
+        surfaces as a publish failure, which is the status quo for them.
+        """
+        if not self.linkedin_token_valid():
+            return False
+        if not self.linkedin_scope:
+            return True
+        return "w_member_social" in self.linkedin_scope.split()
 
     def update_last_login(self):
         """Update last login timestamp"""

@@ -218,6 +218,9 @@ def linkedin_callback():
                 person_urn=f"urn:li:person:{subject}",
                 expires_at=expires_at,
                 refresh_token=token.get("refresh_token"),
+                # What was actually granted, which is not necessarily what was
+                # requested - a missing product silently drops its scope.
+                scope=token.get("scope"),
             )
             # Refresh profile fields on every sign-in so a renamed account or
             # changed avatar does not go stale.
@@ -390,6 +393,12 @@ def _status_payload(user: User) -> dict:
         "connected": user.linkedin_token_valid(),
         "person_urn": user.linkedin_person_urn,
         "email": user.email,
+        # Sign-in succeeding says nothing about publishing: without the "Share
+        # on LinkedIn" product the grant carries no w_member_social and every
+        # post fails. Reported so setup can say so instead of the user finding
+        # out when a scheduled post fires.
+        "can_publish": user.can_publish_to_linkedin(),
+        "granted_scopes": (user.linkedin_scope or "").split() or None,
         "token_expires_at": expires_at.isoformat() if expires_at else None,
         # A lapsed token is a different state from never having connected and
         # needs a different message in the UI.
@@ -397,6 +406,71 @@ def _status_payload(user: User) -> dict:
             user.linkedin_access_token and not user.linkedin_token_valid()
         ),
     }
+
+
+@auth_bp.route("/setup/state", methods=["GET"])
+def setup_state():
+    """What the caller still has to do before they can publish.
+
+    The onboarding flow sends people out to the LinkedIn developer portal, and
+    they come back with no way to know whether what they did worked. This is
+    what it polls on their return: each step reports done/not done from real
+    state, so the wizard advances by observation rather than by asking "did
+    that work?" and believing the answer.
+    """
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "No user session."}), 401
+
+    settings = get_settings()
+    app_ready = linkedin_configured()
+    connected = user.linkedin_token_valid()
+    can_publish = user.can_publish_to_linkedin()
+
+    steps = [
+        {
+            "id": "app",
+            "title": "Register a LinkedIn app",
+            "done": app_ready,
+            # Only useful while it is NOT done, and it names a server-side
+            # setting, so it is withheld from non-admins.
+            "detail": None if app_ready else (
+                "LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET are not set on "
+                "the server."
+            ) if user.is_admin() else "Ask an administrator to finish server setup.",
+        },
+        {
+            "id": "redirect",
+            "title": "Add the redirect URL",
+            # Cannot be observed directly - LinkedIn only reveals a mismatch by
+            # rejecting a live attempt. Treated as done once a grant has
+            # actually come back through it, which is proof it matched.
+            "done": connected,
+            "detail": settings.linkedin_redirect_uri,
+        },
+        {
+            "id": "connect",
+            "title": "Connect your LinkedIn account",
+            "done": connected,
+            "detail": user.linkedin_person_urn if connected else None,
+        },
+        {
+            "id": "publish",
+            "title": "Grant publishing permission",
+            "done": can_publish,
+            "detail": None if can_publish else (
+                "The grant does not include w_member_social. Add the "
+                "\"Share on LinkedIn\" product to the app, then reconnect."
+            ),
+        },
+    ]
+
+    return jsonify({
+        "steps": steps,
+        "complete": all(s["done"] for s in steps),
+        "redirect_uri": settings.linkedin_redirect_uri,
+        "is_admin": user.is_admin(),
+    }), 200
 
 
 @auth_bp.route("/auth/linkedin/disconnect", methods=["POST"])
