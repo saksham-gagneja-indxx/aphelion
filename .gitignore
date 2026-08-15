@@ -66,6 +66,10 @@ data/reels/*
 data/uploads/*
 !data/uploads/.gitkeep
 data/*.db
+# WAL companions. SQLite runs in WAL mode now, so these sit beside the database
+# and are meaningless without it.
+data/*.db-wal
+data/*.db-shm
 data/cache/
 
 # ============ MEDIA ============

@@ -18,71 +18,73 @@
 #     database is external (Supabase) and is NOT affected.
 
 # ============================================================================
-# DISABLED — the backend is not deployed to Render at the moment.
+# ACTIVE — the backend is deployed to Render again.
 #
-# The frontend is on Vercel and the API is run by hand:
+# The frontend is on Vercel and calls this service cross-origin, so two
+# settings have to agree or sign-in breaks in ways that look unrelated:
 #
-#     python -m backend.app          # serves the API on :5000
-#
-# Everything below is the Render service definition, kept verbatim so it can
-# be switched back on by removing the leading "# " from each line.
-#
-# NOTE: commenting this file out does NOT by itself stop Render. The service
-# already exists in the dashboard and keeps its own auto-deploy setting, so it
-# must also be suspended or deleted there.
+#   * the Vercel project needs VITE_API_URL set to this service's URL, at BUILD
+#     time — Vite inlines it, so changing it needs a redeploy, not a restart.
+#   * CORS_ORIGINS here must list the Vercel origin exactly, scheme included.
+#   * LINKEDIN_REDIRECT_URI must match an Authorized redirect URL on the
+#     LinkedIn app character for character, and points at THIS service.
 # ============================================================================
 
-# services:
-#   - type: web
-#     name: social-media-manager-api
-#     runtime: docker
-#     dockerfilePath: ./Dockerfile
-#     plan: free
-#     region: singapore
-#     healthCheckPath: /health
-#
-#     envVars:
-#       # ---- secrets: set in the dashboard, never in git ----
-#       - key: DATABASE_URL          # Supabase pooled connection string
-#         sync: false
-#       - key: LINKEDIN_CLIENT_ID
-#         sync: false
-#       - key: LINKEDIN_CLIENT_SECRET
-#         sync: false
-#       - key: LINKEDIN_REDIRECT_URI
-#         sync: false
-#       - key: API_ACCESS_KEY
-#         sync: false
-#       - key: SECRET_KEY
-#         sync: false
-#       # LinkedIn `sub` values allowed to hold the admin role. When set, the
-#       # "first account becomes admin" bootstrap is disabled entirely.
-#       - key: ADMIN_LINKEDIN_SUBS
-#         sync: false
-#
-#       # The SPA is served from this same origin now, so both point at the
-#       # service's own URL.
-#       - key: FRONTEND_URL
-#         sync: false
-#       - key: CORS_ORIGINS
-#         sync: false
-#
-#       - key: LINKEDIN_API_VERSION
-#         value: "202607"
-#       - key: ALLOW_NEW_SIGNUPS
-#         value: "true"
-#       - key: FLASK_ENV
-#         value: production
-#       - key: DEBUG
-#         value: "false"
-#       - key: TIMEZONE
-#         value: Asia/Kolkata
-#
-#       # Instagram is scaffolded and disabled; these satisfy config validation
-#       # without implying a working integration.
-#       - key: INSTAGRAM_USERNAME
-#         value: your_instagram_username
-#       - key: INSTAGRAM_PASSWORD
-#         value: your_instagram_password
-#       - key: CLAUDE_API_KEY
-#         value: sk-ant-placeholder-not-used-in-v1
+services:
+  - type: web
+    name: social-media-manager-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+
+    envVars:
+      # ---- secrets: set in the dashboard, never in git ----
+      - key: DATABASE_URL          # Supabase pooled connection string
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+      - key: LINKEDIN_REDIRECT_URI
+        sync: false
+      - key: API_ACCESS_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      # LinkedIn `sub` values allowed to hold the admin role. When set, the
+      # "first account becomes admin" bootstrap is disabled entirely.
+      - key: ADMIN_LINKEDIN_SUBS
+        sync: false
+
+      # The SPA is served from this same origin now, so both point at the
+      # service's own URL.
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+      - key: LINKEDIN_API_VERSION
+        value: "202607"
+      - key: ALLOW_NEW_SIGNUPS
+        value: "true"
+      # Guest accounts: sandboxed, cannot publish, never administrators.
+      # Set to "false" to require LinkedIn for everyone.
+      - key: ALLOW_GUEST_ACCESS
+        value: "true"
+      - key: FLASK_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: TIMEZONE
+        value: Asia/Kolkata
+
+      # Instagram is scaffolded and disabled; these satisfy config validation
+      # without implying a working integration.
+      - key: INSTAGRAM_USERNAME
+        value: your_instagram_username
+      - key: INSTAGRAM_PASSWORD
+        value: your_instagram_password
+      - key: CLAUDE_API_KEY
+        value: sk-ant-placeholder-not-used-in-v1
