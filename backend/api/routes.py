@@ -3,7 +3,7 @@ Flask API Routes - All REST endpoints for the application
 Handles user management, scheduling, uploads, and analytics
 """
 
-from flask import Blueprint, request, jsonify, current_app, send_file
+from flask import Blueprint, request, jsonify, current_app, send_file, g
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import HTTPException
 from pathlib import Path
@@ -13,6 +13,7 @@ import pytz
 from backend.utils.logger import get_logger
 from backend.utils.database import get_session
 from backend.utils.config import get_settings
+from backend.utils.security import current_user, require_user_access
 from backend.core.agent import get_agent, clear_agent
 from backend.core.reel_manager import get_reel_manager
 from backend.core.scheduler import get_scheduler
@@ -27,6 +28,36 @@ settings = get_settings()
 
 # Create blueprint
 api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+def _scope_to_caller(user_id):
+    """Resolve the user_id filter for the scheduler listing endpoints.
+
+    Both take user_id as an OPTIONAL query parameter, where None means "every
+    user's jobs". That default is fine for an administrator or the scheduler
+    itself, but for an ordinary operator it would list other people's posts, so
+    an absent filter is narrowed to their own id rather than left wide open.
+
+    Returns the id to filter by, or a Flask error tuple the caller must return.
+    """
+    if getattr(g, "is_machine", False):
+        return user_id
+
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Unauthorized. Sign in or provide an API key."}), 401
+
+    if user.is_admin():
+        return user_id
+
+    if user_id is None:
+        return user.id
+
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
+    return user_id
 
 
 # ============ USER ENDPOINTS ============
@@ -78,6 +109,10 @@ def create_user():
 @api_bp.route("/users/<int:user_id>", methods=["GET"])
 def get_user(user_id):
     """Get user information"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         db = get_session()
         user = db.query(User).filter(User.id == user_id).first()
@@ -98,6 +133,10 @@ def get_user(user_id):
 @api_bp.route("/users/<int:user_id>/authenticate", methods=["POST"])
 def authenticate_user(user_id):
     """Authenticate user with Instagram"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         data = request.get_json()
         db = get_session()
@@ -146,6 +185,11 @@ def create_post():
     try:
         data = request.get_json()
         user_id = data.get("user_id")
+
+        denied = require_user_access(user_id)
+        if denied:
+            return denied
+
         db = get_session()
 
         # Validate user
@@ -215,6 +259,11 @@ def get_post(post_id):
             db.close()
             return jsonify({"error": "Post not found"}), 404
 
+        denied = require_user_access(post.user_id)
+        if denied:
+            db.close()
+            return denied
+
         response = post.to_dict()
         db.close()
         return jsonify(response), 200
@@ -235,6 +284,11 @@ def schedule_post(post_id):
         if not post:
             db.close()
             return jsonify({"error": "Post not found"}), 404
+
+        denied = require_user_access(post.user_id)
+        if denied:
+            db.close()
+            return denied
 
         user = db.query(User).filter(User.id == post.user_id).first()
         if not user:
@@ -308,6 +362,11 @@ def schedule_post_optimal(post_id):
             db.close()
             return jsonify({"error": "Post not found"}), 404
 
+        denied = require_user_access(post.user_id)
+        if denied:
+            db.close()
+            return denied
+
         user = db.query(User).filter(User.id == post.user_id).first()
         if not user:
             db.close()
@@ -345,6 +404,21 @@ def schedule_post_optimal(post_id):
 def cancel_post(post_id):
     """Cancel a scheduled post"""
     try:
+        # Ownership is checked against the stored post before the scheduler is
+        # touched: cancel_post() only takes an id, so without this lookup any
+        # signed-in user could cancel anyone's scheduled post.
+        db = get_session()
+        try:
+            post = db.query(Post).filter(Post.id == post_id).first()
+            if not post:
+                return jsonify({"error": "Post not found"}), 404
+
+            denied = require_user_access(post.user_id)
+            if denied:
+                return denied
+        finally:
+            db.close()
+
         scheduler = get_scheduler()
         success = scheduler.cancel_post(post_id)
 
@@ -361,6 +435,10 @@ def cancel_post(post_id):
 @api_bp.route("/users/<int:user_id>/posts", methods=["GET"])
 def get_user_posts(user_id):
     """Get all posts for a user"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         db = get_session()
 
@@ -395,6 +473,10 @@ def upload_reel():
         user_id = request.form.get("user_id")
         if not user_id:
             return jsonify({"error": "user_id required"}), 400
+
+        denied = require_user_access(user_id)
+        if denied:
+            return denied
 
         # Check file
         if "file" not in request.files:
@@ -451,6 +533,10 @@ def upload_reel():
 @api_bp.route("/users/<int:user_id>/reels", methods=["GET"])
 def get_user_reels(user_id):
     """Get all reels for a user"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         reel_manager = get_reel_manager()
         reels = reel_manager.list_user_reels(user_id)
@@ -470,6 +556,10 @@ def get_user_reels(user_id):
 @api_bp.route("/users/<int:user_id>/reels/<path:filename>/thumbnail", methods=["GET"])
 def get_reel_thumbnail(user_id, filename):
     """Serve the generated thumbnail for one of a user's reels."""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         reel_manager = get_reel_manager()
         user_folder = (reel_manager.reels_folder / str(user_id)).resolve()
@@ -496,6 +586,10 @@ def get_reel_thumbnail(user_id, filename):
 @api_bp.route("/users/<int:user_id>/analytics", methods=["GET"])
 def get_user_analytics(user_id):
     """Get analytics for a user"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         db = get_session()
 
@@ -523,6 +617,10 @@ def get_user_analytics(user_id):
 @api_bp.route("/users/<int:user_id>/analyze", methods=["POST"])
 def analyze_engagement(user_id):
     """Analyze engagement and calculate optimal times"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         db = get_session()
 
@@ -572,6 +670,10 @@ def analyze_engagement(user_id):
 @api_bp.route("/users/<int:user_id>/optimal-time", methods=["GET"])
 def get_optimal_time(user_id):
     """Get next optimal posting time"""
+    denied = require_user_access(user_id)
+    if denied:
+        return denied
+
     try:
         db = get_session()
 
@@ -616,7 +718,9 @@ def scheduler_status():
 def get_scheduled_jobs():
     """Get all scheduled jobs"""
     try:
-        user_id = request.args.get("user_id", type=int)
+        user_id = _scope_to_caller(request.args.get("user_id", type=int))
+        if isinstance(user_id, tuple):
+            return user_id
 
         scheduler = get_scheduler()
         jobs = scheduler.get_scheduled_posts(user_id)
@@ -635,7 +739,9 @@ def get_scheduled_jobs():
 def get_pending_posts():
     """Get all pending posts"""
     try:
-        user_id = request.args.get("user_id", type=int)
+        user_id = _scope_to_caller(request.args.get("user_id", type=int))
+        if isinstance(user_id, tuple):
+            return user_id
 
         scheduler = get_scheduler()
         posts = scheduler.get_pending_posts(user_id)
@@ -666,6 +772,11 @@ def add_to_queue():
             db.close()
             return jsonify({"error": "Post not found"}), 404
 
+        denied = require_user_access(post.user_id)
+        if denied:
+            db.close()
+            return denied
+
         # Update status to queued
         post.status = PostStatus.QUEUED
         db.commit()
@@ -694,6 +805,11 @@ def remove_from_queue(post_id):
         if not post:
             db.close()
             return jsonify({"error": "Post not found"}), 404
+
+        denied = require_user_access(post.user_id)
+        if denied:
+            db.close()
+            return denied
 
         # Update status back to draft
         post.status = PostStatus.DRAFT

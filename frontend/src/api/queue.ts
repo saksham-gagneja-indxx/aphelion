@@ -41,7 +41,7 @@ export interface PostsResponse {
 
 // ---------- Fetch helpers ----------
 
-import { apiFetch } from './auth'
+import { apiFetch, API_BASE } from './auth'
 
 async function toError(res: Response): Promise<Error> {
   try {
@@ -74,13 +74,18 @@ export function cancelPost(postId: number): Promise<{ message: string }> {
 }
 
 /**
- * Build a thumbnail URL for the Vite proxy.
+ * Build a thumbnail URL.
+ *
  * thumbnail_path from the backend is a relative filesystem path like
- * "data\\reels\\1\\file.jpg". We only need user_id + filename for
- * the /api/thumbnails/:user_id/:filename route.
+ * "data\\reels\\1\\file.jpg"; the route wants user_id + filename.
+ *
+ * Two corrections here. The path was /api/thumbnails/:user_id/:filename, which
+ * no backend route ever served - the real one is under /users - so every Queue
+ * thumbnail 404'd. And it needs API_BASE like every other URL, or a split
+ * frontend/backend deploy resolves it against the frontend's own origin.
  */
 export function thumbnailUrl(userId: number, thumbnailPath: string): string {
   // Extract just the filename from the path (handles both / and \\ separators)
   const filename = thumbnailPath.split(/[/\\]/).pop() ?? thumbnailPath
-  return `/api/thumbnails/${userId}/${filename}`
+  return `${API_BASE}/api/users/${userId}/reels/${encodeURIComponent(filename)}/thumbnail`
 }

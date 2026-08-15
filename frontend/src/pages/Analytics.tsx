@@ -20,8 +20,7 @@ import { getAnalytics } from '../api/client'
 import { QueryError, QueryPending, QueryEmpty } from '../components/QueryStates'
 import type { AnalyticsSummary } from '../api/types'
 import { BTN_QUIET, EYEBROW, H1, H2, META } from '../ui'
-
-const USER_ID = 1
+import { useUserId } from '../current-user'
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -172,6 +171,7 @@ function AnalyticsData({ data }: { data: AnalyticsSummary }) {
 }
 
 export default function Analytics() {
+  const USER_ID = useUserId()
   const query = useQuery({
     queryKey: ['analytics', USER_ID],
     queryFn: () => getAnalytics(USER_ID),

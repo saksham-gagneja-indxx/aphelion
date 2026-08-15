@@ -23,12 +23,9 @@ import {
   META,
   SUB,
 } from '../ui'
+import { useUserId } from '../current-user'
 
 // TODO: resolve this from the signed-in user (/api/me) rather than hardcoding.
-// This predates authentication, which now exists - the id is still pinned to 1
-// here, so this page only behaves correctly for the first account.
-const USER_ID = 1
-
 /** Local datetime string for <input type="datetime-local">, minutes precision. */
 function toLocalInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -52,6 +49,7 @@ function formatWhen(iso: string | null): string {
 }
 
 export default function Schedule() {
+  const USER_ID = useUserId()
   const queryClient = useQueryClient()
 
   const [selected, setSelected] = useState<Reel | null>(null)

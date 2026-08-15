@@ -170,6 +170,46 @@ def require_admin() -> Optional[tuple]:
     return None
 
 
+def require_user_access(user_id) -> Optional[tuple]:
+    """Guard for routes that act on one user's data. Returns an error, or None.
+
+    Authentication only proves *who* is calling; it says nothing about whose
+    records they asked for. Every user-scoped route takes the target user id
+    from the client (path, body, form or query string), so without this check a
+    signed-in operator can read and modify any other account's reels, posts and
+    analytics by editing the number - the requests are perfectly authenticated.
+
+    Machine callers and administrators are allowed through, matching
+    require_admin(): the API key is already full-privilege, and the Admin page
+    exists to inspect other accounts.
+    """
+    if getattr(g, "is_machine", False):
+        return None
+
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Unauthorized. Sign in or provide an API key."}), 401
+
+    if user.is_admin():
+        return None
+
+    # A non-numeric id cannot match anyone; treat it as a refusal rather than
+    # letting int() raise a 500 and leak a stack trace.
+    try:
+        target = int(user_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid user id."}), 400
+
+    if user.id != target:
+        logger.warning(
+            f"Refused cross-account access: user {user.id} -> user {target} "
+            f"({request.method} {request.path})"
+        )
+        return jsonify({"error": "You can only access your own data."}), 403
+
+    return None
+
+
 # Backwards-compatible alias for the original hook name.
 check_api_key = authenticate_request
 

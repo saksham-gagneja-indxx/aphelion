@@ -82,7 +82,7 @@ def _frontend_url(status: str, token: str = None) -> str:
     return url
 
 
-def _authorize_redirect(user_id: int):
+def _authorize_url(user_id: int) -> str:
     settings = get_settings()
     params = {
         "response_type": "code",
@@ -91,7 +91,21 @@ def _authorize_redirect(user_id: int):
         "state": make_oauth_state(user_id),
         "scope": SCOPES,
     }
-    return redirect(f"{AUTHORIZE_URL}?{urlencode(params)}")
+    return f"{AUTHORIZE_URL}?{urlencode(params)}"
+
+
+def _authorize_response(user_id: int):
+    """Send the caller to LinkedIn, or hand back the URL for it to open itself.
+
+    `?format=json` exists because /start requires a bearer token, and a
+    top-level browser navigation cannot carry one - it just 401s. The SPA
+    fetches the URL through apiFetch instead and opens it in a new tab, which
+    also leaves the current page intact while the member consents.
+    """
+    url = _authorize_url(user_id)
+    if request.args.get("format") == "json":
+        return jsonify({"url": url}), 200
+    return redirect(url)
 
 
 @auth_bp.route("/auth/linkedin/login", methods=["GET"])
@@ -101,7 +115,7 @@ def linkedin_login():
         return jsonify({
             "error": "LinkedIn sign-in is not configured on this server."
         }), 503
-    return _authorize_redirect(LOGIN_USER_ID)
+    return _authorize_response(LOGIN_USER_ID)
 
 
 @auth_bp.route("/auth/linkedin/start", methods=["GET"])
@@ -116,9 +130,9 @@ def linkedin_start():
         user_id = request.args.get("user_id", type=int)
         if not user_id:
             return jsonify({"error": "user_id is required for machine callers"}), 400
-        return _authorize_redirect(user_id)
+        return _authorize_response(user_id)
 
-    return _authorize_redirect(user.id)
+    return _authorize_response(user.id)
 
 
 @auth_bp.route("/auth/linkedin/callback", methods=["GET"])

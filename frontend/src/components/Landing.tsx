@@ -16,7 +16,7 @@
  */
 import { useEffect, useState } from 'react'
 import BoltLogo from './BoltLogo'
-import { API_BASE } from '../api/auth'
+import { linkedInLoginUrl, openBlankTab } from '../api/auth'
 import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW } from '../ui'
 
 const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
@@ -31,12 +31,24 @@ const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
 const DOCS_URL = 'https://github.com/saksham-gagneja-indxx/social-media-manager#readme'
 
 /**
- * API_BASE is empty on a same-origin deploy and set when the frontend and
- * backend live on different hosts (Vercel + Render). Hardcoding the path here
+ * Consent happens in a new tab, so this page (and anything typed into it) is
+ * still here afterwards. The tab closes itself once it has the token, and this
+ * one refreshes off the resulting 'storage' event - see App.
+ *
+ * linkedInLoginUrl() carries API_BASE: empty on a same-origin deploy, set when
+ * frontend and backend live on different hosts (Vercel + Render). A bare path
  * would send the browser to the frontend's own origin and 404.
+ *
+ * Falls back to navigating this tab when a popup blocker refuses the open,
+ * which is the old behaviour rather than a dead button.
  */
 const startSignIn = () => {
-  window.location.href = `${API_BASE}/api/auth/linkedin/login`
+  const tab = openBlankTab()
+  if (tab) {
+    tab.location.href = linkedInLoginUrl()
+  } else {
+    window.location.href = linkedInLoginUrl()
+  }
 }
 
 /**
