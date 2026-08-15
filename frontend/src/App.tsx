@@ -1,6 +1,6 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getMe, logout, onSessionChangedInAnotherTab, type User } from './api/auth'
 import { CurrentUserProvider } from './current-user'
 import BoltLogo from './components/BoltLogo'
@@ -10,6 +10,7 @@ import Schedule from './pages/Schedule'
 import Queue from './pages/Queue'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
+import Docs from './pages/Docs'
 import Admin from './pages/Admin'
 import { BANNER_DANGER, BTN_OUTLINE } from './ui'
 
@@ -43,8 +44,19 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Avatar menu holding Settings and Sign out.
+ *
+ * Opens on CLICK, not hover. The previous group-hover version could not be
+ * opened by touch at all, which left anyone on a phone with no way to reach
+ * sign-out — the menu was the only place it existed.
+ */
 function UserMenu({ user }: { user: User }) {
   const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const location = useLocation()
+
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
@@ -54,50 +66,132 @@ function UserMenu({ user }: { user: User }) {
     },
   })
 
+  // Navigating away should dismiss it, or it hangs over the new page.
+  useEffect(() => setOpen(false), [location.pathname])
+
+  useEffect(() => {
+    if (!open) return
+    // pointerdown rather than click: fires before the button's own handler on
+    // touch, so tapping the trigger again closes rather than re-opening.
+    const onPointerDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const connected = user.linkedin_connected
+
   return (
     <div className="flex items-center gap-4">
       {/* Connection state reads in violet or grey — the status palette is
-          reserved for posts, and this is not one. */}
-      {user.linkedin_connected ? (
-        <span className="hidden items-center gap-2 text-[14px] whitespace-nowrap text-mist-200 md:inline-flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-          LinkedIn connected
-        </span>
-      ) : (
-        <span className="hidden items-center gap-2 text-[14px] whitespace-nowrap text-mist-500 md:inline-flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-mist-500" />
-          LinkedIn not connected
-        </span>
-      )}
-      <div className="group relative">
-        <button className="flex items-center gap-2.5">
+          reserved for posts, and this is not one. Hidden on narrow screens,
+          where it is repeated inside the menu instead. */}
+      <span
+        className={`hidden items-center gap-2 text-[14px] whitespace-nowrap md:inline-flex ${
+          connected ? 'text-mist-200' : 'text-mist-500'
+        }`}
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-violet-500' : 'bg-mist-500'}`}
+        />
+        {connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
+      </span>
+
+      <div ref={menuRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="Account menu"
+          /* min-h-11: a 44px target, below which taps start missing. */
+          className="flex min-h-11 items-center gap-2.5 pl-1"
+        >
           {user.avatar_url ? (
             <img
               src={user.avatar_url}
-              alt={user.name}
+              alt=""
               className="h-7 w-7 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
               {user.name.charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="hidden text-[15px] whitespace-nowrap text-mist-200 sm:inline">
+          <span className="hidden max-w-[140px] truncate text-[15px] text-mist-200 sm:inline">
             {user.name}
           </span>
+          <svg
+            aria-hidden="true"
+            className={`h-4 w-4 shrink-0 text-mist-500 transition ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
 
-        {/* Dropdown menu */}
-        <div className="surface-raised invisible absolute right-0 z-20 mt-2 w-48 origin-top-right opacity-0 transition-all duration-150 group-hover:visible group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={() => logoutMutation.mutate()}
-            disabled={logoutMutation.isPending}
-            className="block w-full px-4 py-2.5 text-left text-[15px] text-mist-200 transition hover:bg-ink-900 hover:text-mist-50 disabled:opacity-40"
+        {open && (
+          <div
+            role="menu"
+            /* Anchored left below sm: the header wraps at that width, which
+               puts the avatar on the LEFT, and a right-anchored menu then
+               hangs off the side of the screen. */
+            className="surface-raised absolute left-0 z-30 mt-2 w-60 max-w-[calc(100vw-2rem)] origin-top-left sm:left-auto sm:right-0 sm:origin-top-right"
           >
-            {logoutMutation.isPending ? 'Signing out...' : 'Sign out'}
-          </button>
-        </div>
+            <div className="border-b border-line px-4 py-3">
+              <p className="truncate text-[15px] text-mist-50">{user.name}</p>
+              {user.email && (
+                <p className="mt-0.5 truncate text-[13px] text-mist-500">{user.email}</p>
+              )}
+              <span
+                className={`mt-2 inline-flex items-center gap-2 text-[13px] ${
+                  connected ? 'text-violet-300' : 'text-mist-500'
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-violet-500' : 'bg-mist-500'}`}
+                />
+                {connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
+              </span>
+            </div>
+
+            <NavLink
+              to="/settings"
+              role="menuitem"
+              className="block px-4 py-3 text-[15px] text-mist-200 transition hover:bg-ink-900 hover:text-mist-50"
+            >
+              Settings
+            </NavLink>
+            <NavLink
+              to="/docs"
+              role="menuitem"
+              className="block px-4 py-3 text-[15px] text-mist-200 transition hover:bg-ink-900 hover:text-mist-50"
+            >
+              Docs
+            </NavLink>
+
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              className="block w-full border-t border-line px-4 py-3 text-left text-[15px] text-danger transition hover:bg-danger/10 disabled:opacity-40"
+            >
+              {logoutMutation.isPending ? 'Signing out…' : 'Sign out'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -179,12 +273,13 @@ export default function App() {
     )
   }
 
+  // Settings and Docs deliberately live in the avatar menu rather than here:
+  // they are visited rarely, and the nav has to survive a 375px screen.
   const navItems = [
     { to: '/upload', label: 'Upload' },
     { to: '/schedule', label: 'Schedule' },
     { to: '/queue', label: 'Queue' },
     { to: '/analytics', label: 'Analytics' },
-    { to: '/settings', label: 'Settings' },
   ]
 
   if (user.role === 'admin') {
@@ -242,6 +337,7 @@ export default function App() {
             <Route path="/queue" element={<Queue />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/docs" element={<Docs />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </CurrentUserProvider>
