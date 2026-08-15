@@ -395,13 +395,19 @@ def upload_reel():
         if file.filename == "":
             return jsonify({"error": "No file selected"}), 400
 
+        # Get the reel manager FIRST: its constructor creates the upload and
+        # reels directories. Saving before this point fails with ENOENT on any
+        # fresh environment - it only appeared to work locally because earlier
+        # runs had already created the folders.
+        reel_manager = get_reel_manager()
+
         # Save uploaded file
         filename = secure_filename(file.filename)
         temp_path = Path(settings.upload_folder) / filename
+        temp_path.parent.mkdir(parents=True, exist_ok=True)
         file.save(str(temp_path))
 
         # Validate and move to reels folder
-        reel_manager = get_reel_manager()
         success, reel_path, error_msg = reel_manager.upload_reel(
             temp_path,
             int(user_id),

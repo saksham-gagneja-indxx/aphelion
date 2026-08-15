@@ -45,6 +45,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY --from=frontend /build/dist ./frontend/dist
 
+# Runtime data directories. The application creates these on demand, but
+# making them explicit means a permissions or path problem surfaces at build
+# time rather than on a user's first upload.
+# NOTE: this filesystem is ephemeral on Render's free tier - uploaded videos
+# do not survive a restart. The database is external and unaffected.
+RUN mkdir -p data/uploads data/reels data/logs
+
 # Unbuffered so logs reach Render's log stream immediately rather than sitting
 # in a buffer until the process exits.
 ENV PYTHONUNBUFFERED=1 \
