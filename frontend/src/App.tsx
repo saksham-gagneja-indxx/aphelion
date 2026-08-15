@@ -20,6 +20,7 @@ import Settings from './pages/Settings'
 import Docs from './pages/Docs'
 import Setup from './pages/Setup'
 import Admin from './pages/Admin'
+import Console from './pages/Console'
 import { BANNER_DANGER, BTN_OUTLINE } from './ui'
 
 /**
@@ -328,6 +329,7 @@ export default function App() {
 
   if (user.role === 'admin') {
     navItems.push({ to: '/admin', label: 'Admin' })
+    navItems.push({ to: '/console', label: 'Console' })
   }
 
   return <Shell user={user} navItems={navItems} />
@@ -478,6 +480,10 @@ function Shell({
             <Route path="/docs" element={<Docs />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/admin" element={<Admin />} />
+            {/* Deployment state and maintenance, kept apart from Admin, which
+                manages people. Guarded server-side by require_admin either
+                way; the page also refuses to render for a non-admin. */}
+            <Route path="/console" element={<Console />} />
           </Routes>
           </UndoProvider>
         </CurrentUserProvider>

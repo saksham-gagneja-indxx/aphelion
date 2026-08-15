@@ -30,11 +30,8 @@ def app(monkeypatch, tmp_path):
 
     database._db_instance = None
 
-    import backend.core.reel_manager as reel_manager_module
-
-    if hasattr(reel_manager_module, "_reel_manager_instance"):
-        reel_manager_module._reel_manager_instance = None
-
+    # The ReelManager singleton is reset by an autouse fixture in conftest —
+    # an earlier attempt here named the attribute wrongly and did nothing.
     from backend.app import create_app
 
     application = create_app()

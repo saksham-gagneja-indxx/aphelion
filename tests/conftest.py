@@ -43,3 +43,20 @@ def isolate_env_from_dotenv(monkeypatch):
     """
     for name, value in ISOLATED_ENV_VARS.items():
         monkeypatch.setenv(name, value)
+
+
+@pytest.fixture(autouse=True)
+def reset_reel_manager():
+    """Drop the cached ReelManager between tests.
+
+    It is a module-level singleton that captures REELS_FOLDER the first time it
+    is asked for. Tests each point that at their own tmp_path, so without this
+    the second test onwards writes files into the FIRST test's directory while
+    the code under test reads the current one - and the mismatch shows up as an
+    assertion about orphaned files that makes no sense on its own.
+    """
+    import backend.core.reel_manager as reel_manager
+
+    reel_manager._reel_manager = None
+    yield
+    reel_manager._reel_manager = None
