@@ -49,6 +49,20 @@ class Settings(BaseSettings):
     # so this is configurable rather than hardcoded at a call site.
     linkedin_api_version: str = Field(default="202607", alias="LINKEDIN_API_VERSION")
 
+    # ============ ADMIN ALLOWLIST ============
+    # Comma-separated LinkedIn OIDC subject claims (`sub`) permitted to hold
+    # the admin role. When set, this is the ONLY way to become an admin:
+    # the "first account becomes admin" bootstrap is disabled entirely.
+    #
+    # Pinned to `sub` rather than email because LinkedIn does not always return
+    # an email (it needs the `email` scope, which we do not request), and an
+    # email can be changed by its owner. `sub` is stable and unforgeable.
+    admin_linkedin_subs: str = Field(default="", alias="ADMIN_LINKEDIN_SUBS")
+
+    # When false, accounts that are not on the admin allowlist cannot sign up
+    # at all. Use to close the tool completely once the intended users exist.
+    allow_new_signups: bool = Field(default=True, alias="ALLOW_NEW_SIGNUPS")
+
     # ============ API AUTHENTICATION ============
     # Bearer token required on every /api/* route. There is no default and no
     # "disabled" mode: if this is unset the app refuses API requests rather
@@ -143,6 +157,28 @@ def instagram_configured() -> bool:
         is_placeholder(settings.instagram_username)
         or is_placeholder(settings.instagram_password)
     )
+
+
+def admin_subs() -> set:
+    """LinkedIn `sub` values allowed to hold the admin role."""
+    raw = get_settings().admin_linkedin_subs or ""
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
+def is_admin_sub(subject: str) -> bool:
+    """True when this LinkedIn identity is on the admin allowlist."""
+    return bool(subject) and subject in admin_subs()
+
+
+def admin_allowlist_enabled() -> bool:
+    """True when an explicit allowlist is configured.
+
+    While this is empty the system falls back to bootstrap behaviour: the first
+    account to sign in becomes an admin so the tool is usable at all. That is
+    convenient but weak - anyone reaching the public login endpoint on an empty
+    database would claim it. Setting the allowlist closes that permanently.
+    """
+    return len(admin_subs()) > 0
 
 
 def linkedin_configured() -> bool:

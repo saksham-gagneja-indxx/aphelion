@@ -88,8 +88,9 @@ describe('Admin page', () => {
       expect(screen.getByText('Admin Panel')).toBeInTheDocument()
     })
 
-    // Check users table
-    expect(screen.getByText('Admin User')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByText(/Admin User/i).length).toBeGreaterThan(0)
+    })
     expect(screen.getByText('admin@example.com')).toBeInTheDocument()
     expect(screen.getByText('Operator User')).toBeInTheDocument()
     

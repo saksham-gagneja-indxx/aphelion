@@ -3,15 +3,9 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import Login from './Login'
 
 describe('Login component', () => {
-  const originalLocation = window.location
-
   beforeEach(() => {
-    // Reset window.location before each test
-    delete (window as any).location
-    Object.defineProperty(window, 'location', {
-      value: { ...originalLocation, search: '' },
-      writable: true,
-    })
+    // Reset URL before each test
+    window.history.pushState({}, '', '/')
   })
 
   it('renders correctly without errors', () => {
@@ -21,19 +15,19 @@ describe('Login component', () => {
   })
 
   it('displays specific error for ?linkedin=denied', () => {
-    window.location.search = '?linkedin=denied'
+    window.history.pushState({}, '', '/?linkedin=denied')
     render(<Login />)
     expect(screen.getByText('You declined the LinkedIn authorization request. Please authorize to sign in.')).toBeInTheDocument()
   })
 
   it('displays generic error for unknown status', () => {
-    window.location.search = '?linkedin=unknown_error'
+    window.history.pushState({}, '', '/?linkedin=unknown_error')
     render(<Login />)
     expect(screen.getByText('Authentication failed: unknown_error')).toBeInTheDocument()
   })
 
   it('ignores ?linkedin=connected', () => {
-    window.location.search = '?linkedin=connected'
+    window.history.pushState({}, '', '/?linkedin=connected')
     render(<Login />)
     expect(screen.queryByText(/Authentication failed/)).not.toBeInTheDocument()
   })

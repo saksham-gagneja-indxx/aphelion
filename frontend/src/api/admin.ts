@@ -3,6 +3,8 @@
  * Handles endpoints for the Admin panel.
  */
 
+import { apiFetch } from './auth'
+
 export interface AdminUser {
   id: number
   name: string
@@ -33,7 +35,7 @@ async function toError(res: Response): Promise<Error> {
 }
 
 export async function getUsers(): Promise<{ users: AdminUser[] }> {
-  const res = await fetch('/api/admin/users')
+  const res = await apiFetch('/api/admin/users')
   if (!res.ok) {
     if (res.status === 403) throw new Error('Forbidden')
     throw await toError(res)
@@ -42,7 +44,7 @@ export async function getUsers(): Promise<{ users: AdminUser[] }> {
 }
 
 export async function updateUserRole(id: number, role: 'admin' | 'operator'): Promise<void> {
-  const res = await fetch(`/api/admin/users/${id}/role`, {
+  const res = await apiFetch(`/api/admin/users/${id}/role`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role }),
@@ -51,7 +53,7 @@ export async function updateUserRole(id: number, role: 'admin' | 'operator'): Pr
 }
 
 export async function updateUserActive(id: number, is_active: boolean): Promise<void> {
-  const res = await fetch(`/api/admin/users/${id}/active`, {
+  const res = await apiFetch(`/api/admin/users/${id}/active`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ is_active }),
@@ -60,7 +62,7 @@ export async function updateUserActive(id: number, is_active: boolean): Promise<
 }
 
 export async function getAuditLogs(limit: number = 100): Promise<{ events: AuditLogEvent[] }> {
-  const res = await fetch(`/api/admin/audit?limit=${limit}`)
+  const res = await apiFetch(`/api/admin/audit?limit=${limit}`)
   if (!res.ok) {
     if (res.status === 403) throw new Error('Forbidden')
     throw await toError(res)

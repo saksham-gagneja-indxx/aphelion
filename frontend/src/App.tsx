@@ -79,6 +79,37 @@ export default function App() {
     return <Login />
   }
 
+  // If 403 Forbidden, show awaiting approval
+  if (isError && error.message === 'Forbidden') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md space-y-8 rounded-xl border border-slate-200 bg-white p-10 shadow-lg text-center">
+          <div>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+              Account Pending
+            </h2>
+            <p className="mt-4 text-sm text-slate-600">
+              Your account is awaiting admin approval. Please check back later.
+            </p>
+          </div>
+          <div className="mt-8">
+            <button
+              type="button"
+              onClick={() => {
+                // Clear any stored token so they can try again with a different account if needed
+                localStorage.removeItem('smm.session')
+                window.location.reload()
+              }}
+              className="flex w-full items-center justify-center gap-3 rounded-md bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-200 transition"
+            >
+              Sign in with a different account
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // If other error, show a generic error state
   if (isError || !user) {
     return (

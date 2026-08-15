@@ -41,6 +41,8 @@ export interface PostsResponse {
 
 // ---------- Fetch helpers ----------
 
+import { apiFetch } from './auth'
+
 async function toError(res: Response): Promise<Error> {
   try {
     const body = await res.json()
@@ -50,13 +52,13 @@ async function toError(res: Response): Promise<Error> {
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path)
+  const res = await apiFetch(path)
   if (!res.ok) throw await toError(res)
   return (await res.json()) as T
 }
 
 async function postJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { method: 'POST' })
+  const res = await apiFetch(path, { method: 'POST' })
   if (!res.ok) throw await toError(res)
   return (await res.json()) as T
 }

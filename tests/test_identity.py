@@ -294,6 +294,70 @@ def test_second_account_is_inactive_operator(app, db):
     assert created and second.role == "operator" and not second.is_active
 
 
+def test_allowlist_disables_first_user_bootstrap(app, db, monkeypatch):
+    """With an allowlist set, an unlisted first account must NOT become admin."""
+    monkeypatch.setenv("ADMIN_LINKEDIN_SUBS", "the-owner-sub")
+
+    from backend.api.auth_routes import LOGIN_USER_ID, _resolve_user
+
+    with app.app_context():
+        user, created = _resolve_user(
+            db, LOGIN_USER_ID, "some-stranger", {"name": "Stranger"}
+        )
+        db.commit()
+
+    assert created
+    assert user.role == "operator"
+    assert not user.is_active
+
+
+def test_allowlisted_identity_becomes_admin(app, db, monkeypatch):
+    monkeypatch.setenv("ADMIN_LINKEDIN_SUBS", "the-owner-sub")
+
+    from backend.api.auth_routes import LOGIN_USER_ID, _resolve_user
+
+    with app.app_context():
+        user, _ = _resolve_user(db, LOGIN_USER_ID, "the-owner-sub", {"name": "Owner"})
+        db.commit()
+
+    assert user.role == "admin" and user.is_active
+
+
+def test_allowlist_restores_admin_after_tampering(app, db, monkeypatch):
+    """Self-healing: a demoted or deactivated owner is restored on next login."""
+    monkeypatch.setenv("ADMIN_LINKEDIN_SUBS", "the-owner-sub")
+
+    from backend.api.auth_routes import LOGIN_USER_ID, _resolve_user
+
+    with app.app_context():
+        user, _ = _resolve_user(db, LOGIN_USER_ID, "the-owner-sub", {"name": "Owner"})
+        db.commit()
+
+        user.role = "operator"
+        user.is_active = False
+        db.commit()
+
+        again, created = _resolve_user(
+            db, LOGIN_USER_ID, "the-owner-sub", {"name": "Owner"}
+        )
+        db.commit()
+
+    assert not created
+    assert again.role == "admin" and again.is_active
+
+
+def test_signups_can_be_closed_entirely(app, db, monkeypatch):
+    monkeypatch.setenv("ADMIN_LINKEDIN_SUBS", "the-owner-sub")
+    monkeypatch.setenv("ALLOW_NEW_SIGNUPS", "false")
+
+    from backend.api.auth_routes import LOGIN_USER_ID, _resolve_user
+
+    with app.app_context():
+        user, created = _resolve_user(db, LOGIN_USER_ID, "outsider", {"name": "Nope"})
+
+    assert user is None and not created
+
+
 def test_returning_user_is_matched_not_duplicated(app, db):
     from backend.api.auth_routes import LOGIN_USER_ID, _resolve_user
     from backend.models.user import User

@@ -1,22 +1,23 @@
 import { useEffect, useState } from 'react'
 
-const ERROR_MESSAGES: Record<string, string> = {
-  denied: 'You declined the LinkedIn authorization request. Please authorize to sign in.',
-  state_mismatch: 'Security check failed (state mismatch). Please try signing in again.',
-  token_failed: 'Failed to retrieve access token from LinkedIn.',
-  userinfo_failed: 'Failed to fetch your profile from LinkedIn.',
-  network_error: 'A network error occurred while communicating with LinkedIn.',
+const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
+  denied: { text: 'You declined the LinkedIn authorization request. Please authorize to sign in.', type: 'error' },
+  state_mismatch: { text: 'Security check failed (state mismatch). Please try signing in again.', type: 'error' },
+  token_failed: { text: 'Failed to retrieve access token from LinkedIn.', type: 'error' },
+  userinfo_failed: { text: 'Failed to fetch your profile from LinkedIn.', type: 'error' },
+  network_error: { text: 'A network error occurred while communicating with LinkedIn.', type: 'error' },
+  pending_approval: { text: 'Your account is awaiting approval.', type: 'info' },
 }
 
 export default function Login() {
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ text: string; type: 'error' | 'info' } | null>(null)
 
   useEffect(() => {
     // Parse query params for ?linkedin=<status>
     const params = new URLSearchParams(window.location.search)
     const status = params.get('linkedin')
     if (status && status !== 'connected') {
-      setErrorMsg(ERROR_MESSAGES[status] || `Authentication failed: ${status}`)
+      setMsg(MESSAGES[status] || { text: `Authentication failed: ${status}`, type: 'error' })
       // Optionally remove the query param so a refresh doesn't keep showing it
       window.history.replaceState({}, document.title, window.location.pathname)
     }
@@ -34,9 +35,15 @@ export default function Login() {
           </p>
         </div>
 
-        {errorMsg && (
-          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200 text-left">
-            {errorMsg}
+        {msg && (
+          <div
+            className={`rounded-md p-4 text-sm text-left border ${
+              msg.type === 'error'
+                ? 'bg-red-50 text-red-700 border-red-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
+            }`}
+          >
+            {msg.text}
           </div>
         )}
 

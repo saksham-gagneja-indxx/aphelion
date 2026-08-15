@@ -36,7 +36,12 @@ from flask import Blueprint, jsonify, redirect, request
 
 from backend.models.audit import record as audit
 from backend.models.user import User
-from backend.utils.config import get_settings, linkedin_configured
+from backend.utils.config import (
+    admin_allowlist_enabled,
+    get_settings,
+    is_admin_sub,
+    linkedin_configured,
+)
 from backend.utils.database import get_session
 from backend.utils.logger import get_logger
 from backend.utils.security import (
@@ -190,7 +195,9 @@ def linkedin_callback():
         try:
             user, created = _resolve_user(db, state_user_id, subject, userinfo)
             if user is None:
-                return redirect(_frontend_url("no_user"))
+                # Either sign-ups are closed, or a re-connect named an account
+                # that no longer exists. Neither should look like a crash.
+                return redirect(_frontend_url("not_permitted"))
 
             user.store_linkedin_token(
                 access_token=access_token,
@@ -245,30 +252,55 @@ def _resolve_user(db, state_user_id: int, subject: str, userinfo: dict):
         user = db.query(User).filter(User.id == state_user_id).first()
         return user, False
 
+    allowlisted = is_admin_sub(subject)
+
     user = db.query(User).filter(User.linkedin_sub == subject).first()
     if user is not None:
+        # Re-assert the allowlist on every sign-in. This is self-healing: if
+        # the database is ever reset or the role edited by hand, the intended
+        # administrator is restored on their next login and nobody else is.
+        if allowlisted and (user.role != User.ROLE_ADMIN or not user.is_active):
+            logger.info(f"Restoring admin role for allowlisted account {user.id}")
+            user.role = User.ROLE_ADMIN
+            user.is_active = True
         return user, False
 
-    # First account to ever sign in becomes an active administrator, so the
-    # system is usable out of the box. Everyone after is created INACTIVE and
-    # must be approved - otherwise anyone with a LinkedIn account could sign
-    # up and use the tool.
-    is_first_user = db.query(User).count() == 0
+    if allowlisted:
+        role, active = User.ROLE_ADMIN, True
+    elif admin_allowlist_enabled():
+        # An allowlist exists and this identity is not on it. It can never be
+        # an admin, and needs approval before it can do anything.
+        if not get_settings().allow_new_signups:
+            logger.warning(f"Rejected sign-up (signups disabled): sub={subject}")
+            return None, False
+        role, active = User.ROLE_OPERATOR, False
+    else:
+        # Bootstrap: no allowlist configured yet, so the first account to sign
+        # in becomes an active admin - otherwise the tool has no administrator
+        # and cannot be set up. Anyone after is inactive pending approval.
+        # Set ADMIN_LINKEDIN_SUBS to close this path permanently.
+        is_first_user = db.query(User).count() == 0
+        if not is_first_user and not get_settings().allow_new_signups:
+            logger.warning(f"Rejected sign-up (signups disabled): sub={subject}")
+            return None, False
+        role, active = (
+            (User.ROLE_ADMIN, True) if is_first_user else (User.ROLE_OPERATOR, False)
+        )
 
     user = User(
         linkedin_sub=subject,
         full_name=userinfo.get("name"),
         email=userinfo.get("email"),
         avatar_url=userinfo.get("picture"),
-        role=User.ROLE_ADMIN if is_first_user else User.ROLE_OPERATOR,
-        is_active=is_first_user,
+        role=role,
+        is_active=active,
         timezone=get_settings().timezone,
     )
     db.add(user)
     db.flush()  # assign an id before the audit entry references it
 
     logger.info(
-        f"Created account {user.id} ({user.email}) "
+        f"Created account {user.id} ({user.full_name}) "
         f"role={user.role} active={user.is_active}"
     )
     return user, True
