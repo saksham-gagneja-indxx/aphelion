@@ -7,8 +7,7 @@ import { CurrentUserProvider } from './current-user'
 import { UndoProvider } from './undo'
 import BoltLogo from './components/BoltLogo'
 import Landing from './components/Landing'
-import Upload from './pages/Upload'
-import Schedule from './pages/Schedule'
+import Compose from './pages/Compose'
 import Queue from './pages/Queue'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
@@ -286,8 +285,7 @@ export default function App() {
   // Settings and Docs deliberately live in the avatar menu rather than here:
   // they are visited rarely, and the nav has to survive a 375px screen.
   const navItems: { to: string; label: string }[] = [
-    { to: '/upload', label: 'Upload' },
-    { to: '/schedule', label: 'Schedule' },
+    { to: '/compose', label: 'New post' },
     { to: '/queue', label: 'Queue' },
     { to: '/analytics', label: 'Analytics' },
   ]
@@ -405,11 +403,14 @@ function Shell({
             <Route
               path="/"
               element={
-                <Navigate to={user.linkedin_connected ? '/upload' : '/setup'} replace />
+                <Navigate to={user.linkedin_connected ? '/compose' : '/setup'} replace />
               }
             />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/compose" element={<Compose />} />
+            {/* Upload and Schedule are one screen now; the old paths are kept
+                so existing links and bookmarks still land somewhere. */}
+            <Route path="/upload" element={<Navigate to="/compose" replace />} />
+            <Route path="/schedule" element={<Navigate to="/compose" replace />} />
             <Route path="/queue" element={<Queue />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
