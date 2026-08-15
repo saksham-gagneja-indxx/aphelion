@@ -57,6 +57,8 @@ export interface ScheduleResponse {
   post: Post
 }
 
+import { apiFetch, API_BASE } from './auth'
+
 async function toError(res: Response): Promise<Error> {
   try {
     const body = (await res.json()) as ApiError
@@ -68,7 +70,10 @@ async function toError(res: Response): Promise<Error> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
+  // apiFetch, not fetch: every /api/* route requires a bearer token. A plain
+  // fetch here returns 401, which surfaced as "Could not load reels" and
+  // "Could not load scheduled posts" on the Schedule page.
+  const res = await apiFetch(path, init)
   if (!res.ok) throw await toError(res)
   return (await res.json()) as T
 }
@@ -89,6 +94,8 @@ export const createPost = (input: {
   userId: number
   videoPath: string
   caption?: string
+  /** Explicit so a backend default can never silently pick a disabled platform. */
+  platform?: 'linkedin' | 'instagram'
 }) =>
   request<Post>(
     '/api/posts',
@@ -96,6 +103,7 @@ export const createPost = (input: {
       user_id: input.userId,
       video_path: input.videoPath,
       caption: input.caption || null,
+      platform: input.platform ?? 'linkedin',
     }),
   )
 
@@ -114,6 +122,29 @@ export const cancelPost = (postId: number) =>
     method: 'DELETE',
   })
 
+export interface PublishResponse {
+  message: string
+  post: Post
+  url: string
+  platform_post_id: string
+}
+
+/**
+ * Publish immediately, bypassing the schedule.
+ *
+ * Slow by nature: LinkedIn transcodes the video before the post can be
+ * created, so this can take tens of seconds. Callers must show progress rather
+ * than appearing frozen.
+ */
+export const publishNow = (postId: number) =>
+  request<PublishResponse>(`/api/posts/${postId}/publish`, { method: 'POST' })
+
+/** Retract a published post from the platform. */
+export const deletePublished = (postId: number) =>
+  request<{ message: string; post: Post }>(`/api/posts/${postId}/published`, {
+    method: 'DELETE',
+  })
+
 /** Reels are stored on the server; thumbnails are served through the API. */
 export const thumbnailUrl = (userId: number, filename: string) =>
-  `/api/users/${userId}/reels/${encodeURIComponent(filename)}/thumbnail`
+  `${API_BASE}/api/users/${userId}/reels/${encodeURIComponent(filename)}/thumbnail`

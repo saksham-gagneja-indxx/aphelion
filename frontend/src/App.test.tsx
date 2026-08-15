@@ -57,8 +57,14 @@ describe('App routing and auth gate', () => {
 
     // The signed-out landing page, not the app
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Schedule once.')
-    // The main app layout should NOT be visible. The landing page carries the
-    // same wordmark, so assert on the app nav instead of the brand.
+
+    // The main app layout should NOT be visible.
+    //
+    // Asserting on 'Reel Automation' does not work: the landing page carries
+    // the same wordmark, so that text is legitimately present. Nor can we
+    // assert there is no <nav> — the landing page has its own marketing one.
+    // Assert on the app's own nav links, which exist only once signed in.
+    expect(screen.queryByRole('link', { name: 'Upload' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Queue' })).not.toBeInTheDocument()
   })
 

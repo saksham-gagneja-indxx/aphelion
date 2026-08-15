@@ -58,6 +58,9 @@ describe('Analytics page', () => {
     })
     // Must NOT show error banner
     expect(screen.queryByText('Failed to load analytics')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('No posts published yet — analytics will appear here once you publish.'),
+    ).toBeInTheDocument()
   })
 
   it('shows metric cards when data exists', async () => {

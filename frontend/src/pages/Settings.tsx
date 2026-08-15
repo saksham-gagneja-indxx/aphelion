@@ -4,19 +4,11 @@
  *
  * Shows Instagram connection status from GET /api/status (instagram_configured flag)
  * and GET /api/users/1 (username + account details).
- *
- * "Reconnect" button shows an alert — real reconnect flow is Phase 2 per TIMELINE.md.
- * .env update UI is explicitly out of scope for v1.
- *
- * Query-state branches are exhaustive:
- *   anyError → anyPending → bothSuccess+data
- *
- * The entire connection card is hidden until both queries succeed, so a dead
- * backend never renders as "Not connected" with Username "—" — that looks like
- * a real answer when it's actually an outage.
+ * Now also shows LinkedIn connection status.
  */
 import { useQuery } from '@tanstack/react-query'
 import { getStatus, getUser } from '../api/client'
+import { getLinkedInStatus, API_BASE } from '../api/auth'
 import { QueryError, QueryPending } from '../components/QueryStates'
 import { BTN_PRIMARY, H1, H2, META, SUB } from '../ui'
 
@@ -35,23 +27,22 @@ export default function Settings() {
   const userQuery = useQuery({
     queryKey: ['user', USER_ID],
     queryFn: () => getUser(USER_ID),
-    // Don't retry aggressively — user 1 might not exist yet
     retry: 1,
   })
 
-  const handleReconnect = () => {
+  const linkedinQuery = useQuery({
+    queryKey: ['linkedin', USER_ID],
+    queryFn: () => getLinkedInStatus(USER_ID),
+    retry: 1,
+  })
+
+  const handleReconnectInstagram = () => {
     alert('Reconnect flow — Phase 2\n\nReal Instagram re-authentication will be wired in the next sprint.')
   }
 
-  // --- Derive composite states ---
-  // Either query failing should surface an error banner, not fall through
-  // to the data card with default falsy values.
-  const anyError = statusQuery.isError || userQuery.isError
-  // Use isPending (not isLoading): during retry backoff a query is pending
-  // with fetchStatus "idle", so isLoading is false and gating on it can
-  // leave a blank section.
-  const anyPending = statusQuery.isPending || userQuery.isPending
-  const bothSuccess = statusQuery.isSuccess && userQuery.isSuccess
+  const anyError = statusQuery.isError || userQuery.isError || linkedinQuery.isError
+  const anyPending = statusQuery.isPending || userQuery.isPending || linkedinQuery.isPending
+  const allSuccess = statusQuery.isSuccess && userQuery.isSuccess && linkedinQuery.isSuccess
 
   return (
     <div className="mx-auto max-w-2xl animate-rise-in">
@@ -59,7 +50,6 @@ export default function Settings() {
       <p className={SUB}>Account and connection configuration</p>
 
       <div className="mt-10 space-y-3">
-        {/* --- Error state (first branch — never fall through to data) --- */}
         {anyError && (
           <>
             {statusQuery.isError && (
@@ -74,18 +64,20 @@ export default function Settings() {
                 message={`User ID ${USER_ID} doesn't exist yet. Create a user via POST /api/users first.`}
               />
             )}
+            {linkedinQuery.isError && !statusQuery.isError && !userQuery.isError && (
+              <QueryError
+                title="Could not load LinkedIn status"
+                message={(linkedinQuery.error as Error).message}
+              />
+            )}
           </>
         )}
 
-        {/* --- Pending state (second branch) --- */}
         {!anyError && anyPending && (
           <QueryPending label="Loading connection status…" />
         )}
 
-        {/* --- Data state: only render when BOTH queries succeeded ---
-            This ensures a dead backend never renders as "Not connected"
-            with Username "—" — which looks like a valid answer. */}
-        {bothSuccess && (() => {
+        {allSuccess && (() => {
           const instagramConfigured = statusQuery.data.instagram_configured
           const username = userQuery.data.instagram_username
           const isConnected = userQuery.data.instagram_connected
@@ -93,84 +85,161 @@ export default function Settings() {
           const timezone = userQuery.data.timezone
           const accountName = userQuery.data.account_name
 
+          const li = linkedinQuery.data
+
           return (
             <>
-              {/* Instagram connection card */}
+              {/* LinkedIn connection card (Primary) */}
               <div className="surface">
                 <div className="flex items-center justify-between border-b border-line px-5 py-4">
-                  <h2 className={H2}>Instagram Connection</h2>
-                  {/* Three states, no three hues: connected fills violet,
-                      configured outlines it, not-connected stays grey. */}
+                  <h2 className={H2}>LinkedIn Connection</h2>
+                  {/* Connected fills violet; an expired token blocks publishing,
+                      so it takes the danger hue rather than a third violet. */}
                   <span
                     className={`inline-flex items-center gap-2 border px-3 py-1 text-[14px] ${
-                      isConnected && instagramConfigured
-                        ? 'border-violet-500/50 bg-violet-900 text-violet-200'
-                        : instagramConfigured
-                          ? 'border-violet-500/40 bg-violet-500/[0.1] text-violet-300'
-                          : 'border-line bg-ink-900 text-mist-500'
+                      li.connected
+                        ? li.token_expired
+                          ? 'border-danger/45 bg-danger/[0.1] text-danger-soft'
+                          : 'border-violet-500/50 bg-violet-900 text-violet-200'
+                        : 'border-line bg-ink-900 text-mist-500'
                     }`}
                   >
                     <span
                       className={`inline-block h-1.5 w-1.5 rounded-full ${
-                        isConnected && instagramConfigured
-                          ? 'bg-violet-300'
-                          : instagramConfigured
-                            ? 'bg-violet-500'
-                            : 'bg-mist-500'
+                        li.connected
+                          ? li.token_expired
+                            ? 'bg-danger'
+                            : 'bg-violet-300'
+                          : 'bg-mist-500'
                       }`}
                     />
-                    {isConnected && instagramConfigured
-                      ? 'Connected'
-                      : instagramConfigured
-                        ? 'Configured'
-                        : 'Not connected'}
+                    {li.connected
+                      ? li.token_expired
+                        ? 'Token expired'
+                        : 'Connected'
+                      : 'Not connected'}
                   </span>
                 </div>
 
                 <div className="px-5 py-1">
                   <dl className="text-[16px]">
                     <div className={DEF_ROW}>
-                      <dt className="text-mist-500">Username</dt>
-                      <dd className="text-mist-50">
-                        {username ? `@${username}` : '—'}
-                      </dd>
+                      <dt className="text-mist-500">Email</dt>
+                      <dd className="text-mist-50">{li.email ? li.email : '—'}</dd>
                     </div>
-                    {accountName && (
+                    {li.person_urn && (
                       <div className={DEF_ROW}>
-                        <dt className="text-mist-500">Account name</dt>
-                        <dd className="text-mist-50">{accountName}</dd>
+                        <dt className="text-mist-500">Person URN</dt>
+                        <dd className="truncate pl-4 text-mist-50">{li.person_urn}</dd>
                       </div>
                     )}
-                    <div className={DEF_ROW}>
-                      <dt className="text-mist-500">Credentials in .env</dt>
-                      <dd className="text-mist-50">
-                        {instagramConfigured ? 'Yes' : 'No'}
-                      </dd>
+                    <div className={li.token_expires_at ? DEF_ROW : LAST_DEF_ROW}>
+                      <dt className="text-mist-500">App Configured</dt>
+                      <dd className="text-mist-50">{li.app_configured ? 'Yes' : 'No'}</dd>
                     </div>
-                    <div className={DEF_ROW}>
-                      <dt className="text-mist-500">Authenticated</dt>
-                      <dd className="text-mist-50">
-                        {isConnected ? 'Yes' : 'No'}
-                      </dd>
-                    </div>
-                    {lastLogin && (
+                    {li.token_expires_at && (
                       <div className={LAST_DEF_ROW}>
-                        <dt className="text-mist-500">Last login</dt>
-                        <dd className="text-mist-200">
-                          {new Date(lastLogin).toLocaleString()}
+                        <dt className="text-mist-500">Token Expires</dt>
+                        <dd className={li.token_expired ? 'text-danger-soft' : 'text-mist-200'}>
+                          {new Date(li.token_expires_at).toLocaleString()}
                         </dd>
                       </div>
                     )}
                   </dl>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 border-t border-line bg-ink-950 px-5 py-4">
-                  <button type="button" onClick={handleReconnect} className={BTN_PRIMARY}>
-                    Reconnect Instagram
+                <div className="border-t border-line bg-ink-950 px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = `${API_BASE}/api/auth/linkedin/start` }}
+                    className={BTN_PRIMARY}
+                  >
+                    Reconnect LinkedIn
                   </button>
-                  <span className={META}>Phase 2 — shows alert for now</span>
                 </div>
               </div>
+
+              {/* Instagram connection card (Phase 2 stub) */}
+              <details className="surface group">
+                <summary className="flex cursor-pointer items-center justify-between px-5 py-4 marker:content-none group-open:border-b group-open:border-line">
+                  <span className={H2}>Other platforms (Instagram)</span>
+                  <span className="text-mist-500 transition group-open:rotate-180">
+                    <svg fill="none" height="24" shapeRendering="geometricPrecision" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
+                  </span>
+                </summary>
+                
+                <div>
+                  <div className="flex items-center justify-between border-b border-line bg-ink-950 px-5 py-4">
+                    <h2 className={H2}>Instagram Connection</h2>
+                    <span
+                      className={`inline-flex items-center gap-2 border px-3 py-1 text-[14px] ${
+                        isConnected && instagramConfigured
+                          ? 'border-violet-500/50 bg-violet-900 text-violet-200'
+                          : instagramConfigured
+                            ? 'border-violet-500/40 bg-violet-500/[0.1] text-violet-300'
+                            : 'border-line bg-ink-900 text-mist-500'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${
+                          isConnected && instagramConfigured
+                            ? 'bg-violet-300'
+                            : instagramConfigured
+                              ? 'bg-violet-500'
+                              : 'bg-mist-500'
+                        }`}
+                      />
+                      {isConnected && instagramConfigured
+                        ? 'Connected'
+                        : instagramConfigured
+                          ? 'Configured'
+                          : 'Not connected'}
+                    </span>
+                  </div>
+
+                  <div className="px-5 py-1">
+                    <dl className="text-[16px]">
+                      <div className={DEF_ROW}>
+                        <dt className="text-mist-500">Username</dt>
+                        <dd className="text-mist-50">{username ? `@${username}` : '—'}</dd>
+                      </div>
+                      {accountName && (
+                        <div className={DEF_ROW}>
+                          <dt className="text-mist-500">Account name</dt>
+                          <dd className="text-mist-50">{accountName}</dd>
+                        </div>
+                      )}
+                      <div className={DEF_ROW}>
+                        <dt className="text-mist-500">Credentials in .env</dt>
+                        <dd className="text-mist-50">{instagramConfigured ? 'Yes' : 'No'}</dd>
+                      </div>
+                      <div className={lastLogin ? DEF_ROW : LAST_DEF_ROW}>
+                        <dt className="text-mist-500">Authenticated</dt>
+                        <dd className="text-mist-50">{isConnected ? 'Yes' : 'No'}</dd>
+                      </div>
+                      {lastLogin && (
+                        <div className={LAST_DEF_ROW}>
+                          <dt className="text-mist-500">Last login</dt>
+                          <dd className="text-mist-200">
+                            {new Date(lastLogin).toLocaleString()}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 border-t border-line bg-ink-950 px-5 py-4">
+                    <button
+                      type="button"
+                      onClick={handleReconnectInstagram}
+                      className={BTN_PRIMARY}
+                    >
+                      Reconnect Instagram
+                    </button>
+                    <span className={META}>Phase 2 — shows alert for now</span>
+                  </div>
+                </div>
+              </details>
 
               {/* General settings */}
               {timezone && (

@@ -16,6 +16,7 @@
  */
 import { useEffect, useState } from 'react'
 import BoltLogo from './BoltLogo'
+import { API_BASE } from '../api/auth'
 import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW } from '../ui'
 
 const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
@@ -29,8 +30,13 @@ const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
 
 const DOCS_URL = 'https://github.com/saksham-gagneja-indxx/social-media-manager#readme'
 
+/**
+ * API_BASE is empty on a same-origin deploy and set when the frontend and
+ * backend live on different hosts (Vercel + Render). Hardcoding the path here
+ * would send the browser to the frontend's own origin and 404.
+ */
 const startSignIn = () => {
-  window.location.href = '/api/auth/linkedin/login'
+  window.location.href = `${API_BASE}/api/auth/linkedin/login`
 }
 
 /**

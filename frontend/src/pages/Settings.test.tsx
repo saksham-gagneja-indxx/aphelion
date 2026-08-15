@@ -26,6 +26,15 @@ const USER_OK = {
   last_login: null,
 }
 
+const LINKEDIN_OK = {
+  app_configured: true,
+  connected: true,
+  person_urn: 'urn:li:person:123',
+  email: 'test@example.com',
+  token_expires_at: '2026-10-14T10:00:00Z',
+  token_expired: false,
+}
+
 function mockFetchResponses(responses: Record<string, { status: number; body: unknown }>) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url
@@ -85,24 +94,28 @@ describe('Settings page', () => {
 
     // The connection card must NOT be visible
     expect(screen.queryByText('Instagram Connection')).not.toBeInTheDocument()
+    expect(screen.queryByText('LinkedIn Connection')).not.toBeInTheDocument()
     expect(screen.queryByText('Not connected')).not.toBeInTheDocument()
     expect(screen.queryByText('Username')).not.toBeInTheDocument()
     expect(screen.queryByText('Credentials in .env')).not.toBeInTheDocument()
     expect(screen.queryByText('Reconnect Instagram')).not.toBeInTheDocument()
   })
 
-  it('shows connection card when both queries succeed', async () => {
+  it('shows connection card when all queries succeed', async () => {
     mockFetchResponses({
       '/api/status': { status: 200, body: STATUS_OK },
       '/api/users/': { status: 200, body: USER_OK },
+      '/api/auth/linkedin/status': { status: 200, body: LINKEDIN_OK },
     })
     renderWithQuery(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByText('Instagram Connection')).toBeInTheDocument()
+      expect(screen.getByText('LinkedIn Connection')).toBeInTheDocument()
     })
+    expect(screen.getByText('test@example.com')).toBeInTheDocument()
+    expect(screen.getByText('urn:li:person:123')).toBeInTheDocument()
+    expect(screen.getByText('Instagram Connection')).toBeInTheDocument()
     expect(screen.getByText('@local_dev_user')).toBeInTheDocument()
-    expect(screen.getByText('Not connected')).toBeInTheDocument()
     expect(screen.getByText('Asia/Kolkata')).toBeInTheDocument()
   })
 
@@ -110,6 +123,7 @@ describe('Settings page', () => {
     mockFetchResponses({
       '/api/status': { status: 200, body: STATUS_OK },
       '/api/users/': { status: 404, body: { error: 'User not found' } },
+      '/api/auth/linkedin/status': { status: 200, body: LINKEDIN_OK },
     })
     renderWithQuery(<Settings />)
 

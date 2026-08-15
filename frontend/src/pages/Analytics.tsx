@@ -226,7 +226,7 @@ export default function Analytics() {
         {query.isSuccess && query.data == null && (
           <QueryEmpty
             title="No analytics data available"
-            message="Connect your Instagram account and run an engagement analysis to see insights here."
+            message="No posts published yet — analytics will appear here once you publish."
           />
         )}
 
