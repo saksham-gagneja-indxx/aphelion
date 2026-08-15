@@ -31,7 +31,7 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Publish to a **company page** | ⛔ blocked on LinkedIn partner approval |
 | AI caption assist | ✅ working — three drafts from your one-line brief; needs a real `CLAUDE_API_KEY` |
 
-**Tests:** 107 backend (pytest) + 27 frontend (vitest), all passing.
+**Tests:** 119 backend (pytest) + 27 frontend (vitest), all passing.
 
 ---
 
@@ -176,7 +176,7 @@ approving from the Admin panel.
 ### Tests
 
 ```bash
-pytest tests/ -q                 # 107 backend tests
+pytest tests/ -q                 # 119 backend tests
 cd frontend
 npx tsc --noEmit                 # types
 npx vitest run                   # 27 frontend tests
@@ -233,7 +233,7 @@ frontend/src/
   api/          typed client modules, upload store
   pages/        Upload, Schedule, Queue, Analytics, Settings, Admin
   components/
-tests/          107 backend tests
+tests/          119 backend tests
 docs/
   ARCHITECTURE.md   everything technical
 Dockerfile      multi-stage: Node builds the SPA, Python serves it
