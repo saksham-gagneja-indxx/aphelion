@@ -141,7 +141,11 @@ def create_app():
             "version": "1.0.0",
             "environment": settings.flask_env,
             "debug": settings.debug,
-            "database": settings.database_url,
+            # ONLY the backend type. This previously returned the raw
+            # DATABASE_URL, which embeds the database password - any caller
+            # holding the API key could read it, and it would land in logs,
+            # screenshots, and error reports. The dialect is all the UI needs.
+            "database": settings.database_url.split("://", 1)[0] or "unknown",
             # Placeholder credentials must not report as configured — the
             # React Settings page keys off this to show connection state.
             "instagram_configured": instagram_configured(),
