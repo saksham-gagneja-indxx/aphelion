@@ -11,14 +11,14 @@ import { getStatus, getUser } from '../api/client'
 import { getLinkedInStatus, API_BASE } from '../api/auth'
 import { QueryError, QueryPending } from '../components/QueryStates'
 import { BTN_PRIMARY, H1, H2, META, SUB } from '../ui'
-
-const USER_ID = 1
+import { useUserId } from '../current-user'
 
 /** Definition row: hairline separator between entries, none after the last. */
 const DEF_ROW = 'flex items-center justify-between border-b border-line py-3.5'
 const LAST_DEF_ROW = 'flex items-center justify-between py-3.5'
 
 export default function Settings() {
+  const USER_ID = useUserId()
   const statusQuery = useQuery({
     queryKey: ['status'],
     queryFn: getStatus,

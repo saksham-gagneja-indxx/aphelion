@@ -17,9 +17,8 @@ import {
   type PostStatus,
 } from '../api/queue'
 import { QueryError, QueryPending, QueryEmpty } from '../components/QueryStates'
+import { useUserId } from '../current-user'
 import { BANNER_DANGER, BANNER_OK, BTN_QUIET, H1, META, SUB } from '../ui'
-
-const USER_ID = 1
 
 const ALL_STATUSES: PostStatus[] = ['draft', 'queued', 'scheduled', 'posted', 'failed', 'cancelled']
 
@@ -96,6 +95,7 @@ function PostCard({
   onCancel: (id: number) => void
   isCancelling: boolean
 }) {
+  const USER_ID = useUserId()
   const isFailed = post.status === 'failed'
   const isScheduled = post.status === 'scheduled'
   const errorMessage = post.error_message
@@ -213,6 +213,7 @@ function PostCard({
 }
 
 export default function Queue() {
+  const USER_ID = useUserId()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<PostStatus | 'all'>('all')
 

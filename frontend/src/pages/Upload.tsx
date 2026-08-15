@@ -21,10 +21,10 @@ import {
   META,
   SUB,
 } from '../ui'
-
-const USER_ID = 1
+import { useUserId } from '../current-user'
 
 export default function Upload() {
+  const USER_ID = useUserId()
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
