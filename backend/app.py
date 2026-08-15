@@ -10,7 +10,7 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from backend.utils.config import (
     get_settings,
@@ -36,8 +36,18 @@ def create_app():
     logger = setup_logging()
     logger.info("🚀 Starting Social Media Automation Agent")
 
-    # Create Flask app
-    app = Flask(__name__)
+    # Serve the built SPA from this same app when it is present (production
+    # image). In development the Vite dev server serves it instead and this
+    # directory does not exist, so the block below is skipped.
+    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    serve_frontend = frontend_dist.is_dir()
+
+    # static_folder is deliberately disabled. Setting it with static_url_path=""
+    # makes Flask register its own "/<path:filename>" rule, which matches
+    # client-side routes like /admin before the SPA fallback below and 404s
+    # because no such file exists - breaking every deep link and hard refresh.
+    # Serving the files explicitly keeps routing precedence in one place.
+    app = Flask(__name__, static_folder=None)
 
     # Load configuration
     settings = get_settings()
@@ -143,6 +153,33 @@ def create_app():
             # the UI uses this to avoid offering a platform that cannot work.
             "publishing_enabled": {"linkedin": True, "instagram": False},
         }), 200
+
+    # Serve the SPA. Registered AFTER the API blueprints so their routes win,
+    # and it explicitly refuses /api and /health so a typo in an endpoint path
+    # returns a JSON 404 instead of silently handing back index.html - which
+    # would surface as a confusing "unexpected token <" JSON parse error in the
+    # browser rather than a clear 404.
+    if serve_frontend:
+        index_file = frontend_dist / "index.html"
+
+        @app.route("/", defaults={"path": ""})
+        @app.route("/<path:path>")
+        def serve_spa(path):
+            if path.startswith("api/") or path == "health":
+                return jsonify({"error": "Not found"}), 404
+
+            requested = frontend_dist / path
+            if path and requested.is_file():
+                return send_from_directory(str(frontend_dist), path)
+
+            # Any other path is a client-side route (/admin, /queue, ...).
+            # Returning index.html is what makes a hard refresh or a pasted
+            # deep link work instead of 404ing.
+            return send_file(str(index_file))
+
+        logger.info(f"🖥️  Serving frontend from {frontend_dist}")
+    else:
+        logger.info("🖥️  No frontend build found - API only (Vite serves the SPA in dev)")
 
     # Error handlers
     @app.errorhandler(404)

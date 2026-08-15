@@ -1,63 +1,67 @@
-# Render deployment for the Social Media Manager backend.
+# Render deployment: ONE service serving both the API and the built SPA.
 #
-# Why this exists: LinkedIn's API host (api.linkedin.com) is unreachable from
-# the development machine because local endpoint-protection software
-# intercepts TLS for that host. Running the backend on Render means the
-# LinkedIn calls originate from Render's network instead.
+# Docker rather than Render's native Python runtime because:
+#   * building the SPA needs Node, which the Python runtime does not guarantee
+#   * ffmpeg/ffprobe can be installed, so thumbnails and duration validation
+#     work in production instead of silently degrading
 #
-# Free-tier limitations that are deliberately accepted here:
-#   * The service sleeps after ~15 minutes idle, so APScheduler jobs will NOT
-#     fire reliably. Scheduling needs a paid instance (or an external pinger).
-#     Publish-now works fine, which is what this deployment is for.
-#   * The filesystem is ephemeral: uploaded videos and the SQLite database are
-#     lost on every restart and redeploy. Acceptable for validation, not for
-#     production - that needs a Render Postgres instance and object storage.
-#   * ffmpeg/ffprobe are not installed, so duration validation is skipped.
-#     ReelManager and the publishers already degrade gracefully.
+# One service rather than separate frontend/backend because:
+#   * same origin, so CORS does not apply to the SPA at all
+#   * one custom domain and one reputation to establish - relevant while
+#     *.onrender.com is flagged by Google Safe Browsing
+#   * one free instance instead of two
+#
+# Free-tier limitations still in force:
+#   * the service sleeps after ~15 minutes idle, so APScheduler jobs do NOT
+#     fire reliably. Scheduling needs a paid instance or an external pinger.
+#   * uploaded videos live on an ephemeral disk and are lost on restart. The
+#     database is external (Supabase) and is NOT affected.
 
 services:
   - type: web
     name: social-media-manager-api
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    region: singapore  # closest to Asia/Kolkata, keeps latency sane
-    buildCommand: pip install -r requirements.txt
-    # IMPORTANT: exactly one worker. APScheduler runs in-process, so multiple
-    # gunicorn workers would each start their own scheduler and fire every
-    # scheduled post once per worker.
-    startCommand: gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 1 --timeout 180
+    region: singapore
     healthCheckPath: /health
 
     envVars:
-      # ---- secrets: set these in the Render dashboard, never in git ----
+      # ---- secrets: set in the dashboard, never in git ----
+      - key: DATABASE_URL          # Supabase pooled connection string
+        sync: false
       - key: LINKEDIN_CLIENT_ID
         sync: false
       - key: LINKEDIN_CLIENT_SECRET
         sync: false
-
-      # Must match an Authorized redirect URL in the LinkedIn app exactly.
-      # Fill in with the real onrender.com hostname once it is assigned.
       - key: LINKEDIN_REDIRECT_URI
         sync: false
-      - key: FRONTEND_URL
+      - key: API_ACCESS_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      # LinkedIn `sub` values allowed to hold the admin role. When set, the
+      # "first account becomes admin" bootstrap is disabled entirely.
+      - key: ADMIN_LINKEDIN_SUBS
         sync: false
 
-      # Signs the Flask session that carries the OAuth `state` value. Generated
-      # once by Render and kept stable - regenerating it mid-flow would
-      # invalidate in-flight callbacks.
-      - key: SECRET_KEY
-        generateValue: true
+      # The SPA is served from this same origin now, so both point at the
+      # service's own URL.
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
 
       - key: LINKEDIN_API_VERSION
         value: "202607"
+      - key: ALLOW_NEW_SIGNUPS
+        value: "true"
       - key: FLASK_ENV
         value: production
       - key: DEBUG
         value: "false"
       - key: TIMEZONE
         value: Asia/Kolkata
-      - key: PYTHON_VERSION
-        value: "3.12.7"
 
       # Instagram is scaffolded and disabled; these satisfy config validation
       # without implying a working integration.
