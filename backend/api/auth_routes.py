@@ -28,7 +28,11 @@ what an anonymous visitor clicks - so approval, not the login endpoint, is
 where access is actually controlled.
 """
 
+import base64
+import binascii
+import json
 from datetime import timedelta
+from typing import Optional
 from urllib.parse import urlencode
 
 import requests
@@ -65,6 +69,49 @@ SCOPES = "openid profile w_member_social"
 # Sentinel user_id inside the signed state meaning "this is a sign-in; resolve
 # the account from the LinkedIn subject claim" rather than "re-connect user N".
 LOGIN_USER_ID = 0
+
+
+def _claims_from_id_token(id_token: Optional[str]) -> dict:
+    """Read the OIDC identity claims out of the id_token.
+
+    We request the `openid` scope, so the token response carries an id_token
+    holding exactly what the userinfo endpoint would return: sub, name, email,
+    picture. Reading it here removes an HTTP round trip, and with it a whole
+    failure mode - userinfo lives on api.linkedin.com, a different host from
+    the token endpoint, so sign-in used to depend on BOTH being reachable.
+    That is not hypothetical: on a network that filters api.linkedin.com by
+    SNI, the token exchange succeeds and sign-in then dies at userinfo with an
+    SSL error.
+
+    The signature is deliberately not verified, which is sound specifically
+    here and would not be elsewhere. This token was just fetched by us, over a
+    verified TLS connection, directly from LinkedIn's token endpoint, in the
+    authorization code flow - so TLS already establishes who sent it and that
+    nobody altered it in transit. OpenID Connect Core 3.1.3.7 permits exactly
+    this substitution. An id_token arriving by any other route (an implicit
+    flow, or one handed to us by a client) would have to be verified properly.
+
+    Returns {} when there is no usable token, so the caller falls back to
+    querying userinfo rather than treating the sign-in as anonymous.
+    """
+    if not id_token:
+        return {}
+
+    try:
+        payload_segment = id_token.split(".")[1]
+        padding = "=" * (-len(payload_segment) % 4)
+        claims = json.loads(
+            base64.urlsafe_b64decode(payload_segment + padding).decode("utf-8")
+        )
+    except (IndexError, ValueError, UnicodeDecodeError, binascii.Error) as e:
+        # Malformed rather than fatal: fall back to userinfo.
+        logger.warning(f"Could not read id_token claims, falling back: {e}")
+        return {}
+
+    if not isinstance(claims, dict) or not claims.get("sub"):
+        return {}
+
+    return claims
 
 
 def _frontend_url(status: str, token: str = None) -> str:
@@ -184,19 +231,24 @@ def linkedin_callback():
         if not access_token:
             return redirect(_frontend_url("token_failed"))
 
-        userinfo_response = requests.get(
-            USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=30,
-        )
-        if userinfo_response.status_code >= 400:
-            logger.error(
-                f"LinkedIn userinfo failed "
-                f"({userinfo_response.status_code}): {userinfo_response.text[:300]}"
-            )
-            return redirect(_frontend_url("userinfo_failed"))
+        # Identity comes from the id_token when there is one, and only falls
+        # back to the userinfo endpoint otherwise. See _claims_from_id_token.
+        userinfo = _claims_from_id_token(token.get("id_token"))
 
-        userinfo = userinfo_response.json()
+        if not userinfo.get("sub"):
+            userinfo_response = requests.get(
+                USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30,
+            )
+            if userinfo_response.status_code >= 400:
+                logger.error(
+                    f"LinkedIn userinfo failed "
+                    f"({userinfo_response.status_code}): {userinfo_response.text[:300]}"
+                )
+                return redirect(_frontend_url("userinfo_failed"))
+            userinfo = userinfo_response.json()
+
         subject = userinfo.get("sub")
         if not subject:
             return redirect(_frontend_url("userinfo_failed"))

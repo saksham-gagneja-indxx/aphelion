@@ -171,6 +171,10 @@ const SECTIONS: Section[] = [
             q: 'Token expired',
             a: 'LinkedIn access tokens lapse. Reconnect from Settings; nothing else is lost, and scheduled posts resume.',
           },
+          {
+            q: '“A network error occurred while communicating with LinkedIn”',
+            a: 'The server could not reach LinkedIn. If the logs show an SSL error against api.linkedin.com while www.linkedin.com works, the network is filtering that hostname — some ISPs, office networks and antivirus HTTPS scanners do. Sign-in itself no longer needs that host, but publishing does, so try a different network or a phone hotspot.',
+          },
         ].map(({ q, a }) => (
           <div key={q}>
             <dt className="text-[16px] text-mist-50">{q}</dt>
