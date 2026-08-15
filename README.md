@@ -3,7 +3,11 @@
 Upload a video once, and publish or schedule it to LinkedIn from a single
 dashboard — with roles, approvals, and an audit trail for every post.
 
-**Live:** https://social-media-manager-api-wk5g.onrender.com
+**Frontend:** deployed on Vercel · **Backend:** run locally (`python -m backend.app`)
+
+> Render deployment is switched off — `render.yaml` is commented out. The
+> Vercel build needs `VITE_API_URL` pointing at the backend, and the backend
+> needs that Vercel origin in `CORS_ORIGINS`.
 
 For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
@@ -27,7 +31,7 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Publish to a **company page** | ⛔ blocked on LinkedIn partner approval |
 | AI caption assist | ✅ working — three drafts from your one-line brief; needs a real `CLAUDE_API_KEY` |
 
-**Tests:** 98 backend (pytest) + 27 frontend (vitest), all passing.
+**Tests:** 107 backend (pytest) + 27 frontend (vitest), all passing.
 
 ---
 
@@ -172,7 +176,7 @@ approving from the Admin panel.
 ### Tests
 
 ```bash
-pytest tests/ -q                 # 93 backend tests
+pytest tests/ -q                 # 107 backend tests
 cd frontend
 npx tsc --noEmit                 # types
 npx vitest run                   # 27 frontend tests
@@ -229,7 +233,7 @@ frontend/src/
   api/          typed client modules, upload store
   pages/        Upload, Schedule, Queue, Analytics, Settings, Admin
   components/
-tests/          93 backend tests
+tests/          107 backend tests
 docs/
   ARCHITECTURE.md   everything technical
 Dockerfile      multi-stage: Node builds the SPA, Python serves it

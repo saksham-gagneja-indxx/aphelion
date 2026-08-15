@@ -8,11 +8,10 @@ import react from '@vitejs/plugin-react'
 //   * the browser never makes a cross-origin request, so CORS rules on the
 //     backend are irrelevant during development
 //
-// The backend no longer runs locally: api.linkedin.com is unreachable from
-// this machine (local endpoint-protection software intercepts TLS for that
-// host), so it is deployed to Render and the proxy points there. Override with
-// VITE_API_TARGET=http://127.0.0.1:5000 to develop against a local backend.
-const DEFAULT_API_TARGET = 'https://social-media-manager-api-wk5g.onrender.com'
+// The backend is run by hand (`python -m backend.app`) rather than deployed,
+// so the dev proxy points at localhost. Override with VITE_API_TARGET to aim
+// at a tunnel or a hosted instance.
+const DEFAULT_API_TARGET = 'http://127.0.0.1:5000'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')

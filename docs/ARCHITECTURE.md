@@ -677,7 +677,7 @@ permanent fix, `git revert` on `main`.
 
 ## Testing
 
-98 backend, 27 frontend.
+107 backend, 27 frontend.
 
 Backend coverage concentrates on what is genuinely risky:
 
