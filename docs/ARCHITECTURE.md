@@ -356,8 +356,31 @@ The scheduler resolves a publisher from `post.platform` and calls the same
 "how do we post to LinkedIn", not two that can drift apart.
 
 **On the free tier the instance sleeps after ~15 minutes idle, and a sleeping
-process fires nothing.** Scheduled posting is not reliable until that is fixed
-by a paid instance or an external trigger.
+process fires nothing.** Publishing at the requested minute needs an always-on
+instance — a paid plan or an external pinger.
+
+What the process does guarantee is that a missed post is never lost silently.
+APScheduler's job store is in memory, so the Post table is the durable record
+and every process start rebuilds the timers from it (`_restore_scheduled_jobs`).
+A post that came due while nothing was running is published on the next start
+if it is inside `SCHEDULER_MISFIRE_GRACE_SECONDS` (default one hour), and
+failed with the reason and the delay otherwise, so it shows up on the Queue
+instead of sitting at `scheduled` forever.
+
+Three things had to be true for that to work, and none of them were:
+
+- **The scheduler has to start with the process.** `get_scheduler()` is lazy
+  and every caller is a request handler, so a process nobody visited restored
+  nothing and watched no clock. `create_app()` now starts it.
+- **The grace window has to outlast a restart.** It was 60 seconds, which no
+  restart is ever inside, so every restored job was discarded as a misfire —
+  the recovery path was disabled by its own configuration.
+- **The trigger has to carry a timezone.** `scheduled_time` is a naive column
+  holding the user's local wall clock (the write path localises, and Postgres
+  drops the offset). Passed to APScheduler unlocalised it is read in the
+  container's zone instead, publishing a restored post 5h30m late for
+  Asia/Kolkata. This one was invisible while the grace window discarded the
+  jobs before they could fire at the wrong hour.
 
 ---
 
@@ -613,7 +636,7 @@ permanent fix, `git revert` on `main`.
 
 ## Testing
 
-93 backend, 27 frontend.
+98 backend, 27 frontend.
 
 Backend coverage concentrates on what is genuinely risky:
 

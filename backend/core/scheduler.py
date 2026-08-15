@@ -55,7 +55,17 @@ class SmartScheduler:
             raise
 
     def _restore_scheduled_jobs(self):
-        """Restore scheduled jobs from database"""
+        """Re-arm scheduled posts after a restart, and account for the misses.
+
+        APScheduler's job store is in memory, so the Post table is the only
+        durable record of what is due - every process start has to rebuild the
+        timers from it. Posts that came due while nothing was running are
+        either still publishable (within the grace window) or too late, and
+        the too-late ones are failed here. Leaving them `scheduled` is what
+        made missed posts invisible: the Queue showed them as pending forever
+        and no failure was ever recorded.
+        """
+        db = None
         try:
             db = get_session()
             scheduled_posts = db.query(Post).filter(
@@ -64,14 +74,92 @@ class SmartScheduler:
 
             logger.info(f"📋 Found {len(scheduled_posts)} scheduled posts to restore")
 
-            for post in scheduled_posts:
-                if post.scheduled_time and post.job_id:
-                    self._add_post_job(post)
+            grace = timedelta(seconds=self.settings.scheduler_misfire_grace_seconds)
+            restored = 0
+            expired = 0
 
-            db.close()
+            for post in scheduled_posts:
+                if not post.scheduled_time or not post.job_id:
+                    # schedule_post() writes status, scheduled_time and job_id
+                    # in one commit, so this row cannot fire and cannot be
+                    # explained. Surface it rather than skipping in silence.
+                    logger.warning(
+                        f"⚠️  Post {post.id} is scheduled but has no "
+                        f"{'scheduled_time' if not post.scheduled_time else 'job_id'}"
+                    )
+                    continue
+
+                tz = self._post_timezone(post)
+                run_at = self._as_aware(post.scheduled_time, tz)
+                late_by = datetime.now(tz) - run_at
+
+                if late_by > grace:
+                    post.mark_as_failed(
+                        f"Missed its scheduled time by {self._humanise(late_by)}. "
+                        f"The server was not running when it came due, and the "
+                        f"post was past the {self._humanise(grace)} grace window "
+                        f"by the time it started. Reschedule it to publish."
+                    )
+                    expired += 1
+                    logger.warning(
+                        f"⌛ Post {post.id} missed {run_at.isoformat()} by "
+                        f"{self._humanise(late_by)} - marked failed"
+                    )
+                    continue
+
+                if self._add_post_job(post, run_at=run_at):
+                    restored += 1
+
+            if expired:
+                db.commit()
+
+            logger.info(f"✅ Restored {restored} job(s), failed {expired} overdue post(s)")
 
         except Exception as e:
-            logger.error(f"Error restoring scheduled jobs: {str(e)}")
+            logger.exception(f"Error restoring scheduled jobs: {str(e)}")
+        finally:
+            if db is not None:
+                db.close()
+
+    def _post_timezone(self, post: Post):
+        """The timezone `post.scheduled_time` was written in."""
+        name = None
+        try:
+            if post.user is not None:
+                name = post.user.timezone
+        except Exception:
+            name = None
+        try:
+            return pytz.timezone(name or self.settings.timezone)
+        except Exception:
+            return pytz.timezone(self.settings.timezone)
+
+    @staticmethod
+    def _as_aware(dt: datetime, tz) -> datetime:
+        """Attach a timezone to a stored `scheduled_time`.
+
+        The column is a naive `DateTime`, and the write path localises the
+        user's picked time before storing it, so Postgres keeps the local wall
+        clock and drops the offset. A naive value therefore means local time in
+        the user's zone - NOT UTC. Handing it to APScheduler unlocalised lets
+        the scheduler read it in the container's zone instead, which publishes
+        every restored post off by the offset (5h30m for Asia/Kolkata).
+        """
+        if dt.tzinfo is None:
+            return tz.localize(dt)
+        return dt.astimezone(tz)
+
+    @staticmethod
+    def _humanise(delta: timedelta) -> str:
+        """'2h 15m' - for error messages a person has to read."""
+        seconds = int(abs(delta).total_seconds())
+        hours, seconds = divmod(seconds, 3600)
+        minutes = seconds // 60
+        if hours and minutes:
+            return f"{hours}h {minutes}m"
+        if hours:
+            return f"{hours}h"
+        return f"{minutes}m" 
 
     def schedule_post(
         self,
@@ -116,7 +204,7 @@ class SmartScheduler:
                 args=[user.id, post_id],
                 name=f"Post {post_id}",
                 replace_existing=False,
-                misfire_grace_time=60
+                misfire_grace_time=self.settings.scheduler_misfire_grace_seconds,
             )
 
             # Update post in database
@@ -253,13 +341,16 @@ class SmartScheduler:
                 except Exception:
                     pass
 
-    def _add_post_job(self, post: Post):
-        """Add a post job to the scheduler"""
+    def _add_post_job(self, post: Post, run_at: Optional[datetime] = None) -> bool:
+        """Arm one post. `run_at` must be timezone-aware - see `_as_aware`."""
         try:
             if not post.scheduled_time or not post.job_id:
-                return
+                return False
 
-            trigger = DateTrigger(run_date=post.scheduled_time)
+            if run_at is None:
+                run_at = self._as_aware(post.scheduled_time, self._post_timezone(post))
+
+            trigger = DateTrigger(run_date=run_at)
 
             self.scheduler.add_job(
                 func=self._post_job_callback,
@@ -267,14 +358,16 @@ class SmartScheduler:
                 id=post.job_id,
                 args=[post.user_id, post.id],
                 name=f"Post {post.id}",
-                replace_existing=False,
-                misfire_grace_time=60
+                replace_existing=True,
+                misfire_grace_time=self.settings.scheduler_misfire_grace_seconds,
             )
 
-            logger.info(f"✅ Restored job: {post.job_id}")
+            logger.info(f"✅ Restored job {post.job_id} for {run_at.isoformat()}")
+            return True
 
         except Exception as e:
             logger.warning(f"⚠️  Could not restore job {post.job_id}: {str(e)}")
+            return False
 
     def cancel_post(self, post_id: int) -> bool:
         """

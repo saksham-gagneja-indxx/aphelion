@@ -102,6 +102,14 @@ class Settings(BaseSettings):
 
     # ============ SCHEDULER SETTINGS ============
     scheduler_enabled: bool = Field(default=True, alias="SCHEDULER_ENABLED")
+    # How late a post may be published after its scheduled time. The process
+    # is not always up when a post comes due - a deploy, a crash, or a free
+    # instance sleeping through the moment - so recovery has to tolerate some
+    # lateness. Past this window the post is failed with a reason rather than
+    # published at the wrong time of day or dropped in silence.
+    scheduler_misfire_grace_seconds: int = Field(
+        default=3600, alias="SCHEDULER_MISFIRE_GRACE_SECONDS"
+    )
     scheduler_check_interval: int = Field(default=60, alias="SCHEDULER_CHECK_INTERVAL")  # seconds
     scheduler_max_workers: int = Field(default=4, alias="SCHEDULER_MAX_WORKERS")
 

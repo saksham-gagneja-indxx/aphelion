@@ -100,6 +100,31 @@ def create_app():
     # Initialize database
     init_db()
 
+    # Start the scheduler here, not on the first request that happens to touch
+    # it. get_scheduler() is lazy and every caller is a request handler, so a
+    # process nobody visited had no scheduler at all - it restored nothing and
+    # watched no clock. Posts due during a quiet period simply never fired.
+    #
+    # A scheduler that fails to start must not take the API down with it:
+    # uploads, the queue and sign-in all still work without it. Log it loudly
+    # and keep serving.
+    if settings.scheduler_enabled:
+        try:
+            from backend.core.scheduler import get_scheduler
+
+            scheduler = get_scheduler()
+            logger.info(
+                f"⏰ Scheduler started with "
+                f"{scheduler.get_jobs_count()['total_jobs']} job(s) restored"
+            )
+        except Exception:
+            logger.exception(
+                "🚨 Scheduler failed to start - scheduled posts will NOT publish. "
+                "The rest of the API is unaffected."
+            )
+    else:
+        logger.warning("⏸️  SCHEDULER_ENABLED is false - scheduled posts will not publish")
+
     # Register blueprints
     from backend.api.routes import api_bp
     from backend.api.auth_routes import auth_bp
