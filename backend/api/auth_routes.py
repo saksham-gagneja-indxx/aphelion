@@ -20,17 +20,17 @@ attacker bind their own LinkedIn account to our user record. It is generated
 per attempt, kept in the signed Flask session, and compared on return.
 """
 
-import secrets
 from datetime import timedelta
 from urllib.parse import urlencode
 
 import requests
-from flask import Blueprint, jsonify, redirect, request, session
+from flask import Blueprint, jsonify, redirect, request
 
 from backend.models.user import User
 from backend.utils.config import get_settings, linkedin_configured
 from backend.utils.database import get_session
 from backend.utils.logger import get_logger
+from backend.utils.security import make_oauth_state, verify_oauth_state
 from backend.utils.timeutil import utcnow
 
 logger = get_logger("social_media_automation.auth")
@@ -42,9 +42,6 @@ TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 
 SCOPES = "openid profile w_member_social"
-
-_STATE_KEY = "linkedin_oauth_state"
-_USER_KEY = "linkedin_oauth_user_id"
 
 def _settings_url(status: str) -> str:
     """Where to send the browser once the dance finishes.
@@ -71,9 +68,10 @@ def linkedin_start():
         return jsonify({"error": "user_id is required"}), 400
 
     settings = get_settings()
-    state = secrets.token_urlsafe(32)
-    session[_STATE_KEY] = state
-    session[_USER_KEY] = user_id
+    # Signed and expiring, carrying the user_id. The callback verifies this
+    # signature, so no session cookie is needed and the returned state cannot
+    # be replayed against a different account.
+    state = make_oauth_state(user_id)
 
     params = {
         "response_type": "code",
@@ -96,17 +94,17 @@ def linkedin_callback():
         logger.warning(f"LinkedIn authorization denied: {error} {description}")
         return redirect(_settings_url("denied"))
 
-    state = request.args.get("state")
-    expected_state = session.pop(_STATE_KEY, None)
-    user_id = session.pop(_USER_KEY, None)
-
-    # Constant-time compare; a mismatch means a forged or replayed callback.
-    if not expected_state or not state or not secrets.compare_digest(state, expected_state):
-        logger.warning("LinkedIn callback rejected: state mismatch")
+    # This endpoint is intentionally reachable without an API key - LinkedIn
+    # redirects the member's browser here and it cannot carry our bearer token.
+    # The signed state IS the authorization: nothing is written unless it
+    # verifies, and it binds the user_id that the token will be stored against.
+    user_id, state_error = verify_oauth_state(request.args.get("state"))
+    if user_id is None:
+        logger.warning(f"LinkedIn callback rejected: {state_error}")
         return redirect(_settings_url("state_mismatch"))
 
     code = request.args.get("code")
-    if not code or not user_id:
+    if not code:
         return redirect(_settings_url("missing_code"))
 
     settings = get_settings()

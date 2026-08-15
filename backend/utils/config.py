@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     # so this is configurable rather than hardcoded at a call site.
     linkedin_api_version: str = Field(default="202607", alias="LINKEDIN_API_VERSION")
 
+    # ============ API AUTHENTICATION ============
+    # Bearer token required on every /api/* route. There is no default and no
+    # "disabled" mode: if this is unset the app refuses API requests rather
+    # than serving them openly. See backend/utils/security.py.
+    api_access_key: Optional[str] = Field(default=None, alias="API_ACCESS_KEY")
+
+    # Origins allowed to call the API from a browser. Comma-separated.
+    # Never "*" - that lets any site a user visits drive this API with their
+    # credentials attached.
+    cors_origins: str = Field(
+        default="http://localhost:5173", alias="CORS_ORIGINS"
+    )
+
     # ============ FRONTEND ============
     # Where the OAuth callback sends the browser once the token is stored.
     # Configurable because it differs per environment: the Vite dev server

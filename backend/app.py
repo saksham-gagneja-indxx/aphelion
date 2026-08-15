@@ -51,8 +51,36 @@ def create_app():
     # user_id field) so a file exactly at the limit still succeeds.
     app.config["MAX_CONTENT_LENGTH"] = settings.max_upload_size + MULTIPART_OVERHEAD_BYTES
 
-    # Configure CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # Restrict CORS to known frontend origins. A wildcard here would let any
+    # website a user visits issue requests against this API from their browser.
+    allowed_origins = [
+        origin.strip()
+        for origin in settings.cors_origins.split(",")
+        if origin.strip()
+    ]
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": allowed_origins}},
+        supports_credentials=True,
+    )
+    logger.info(f"🔒 CORS restricted to: {', '.join(allowed_origins)}")
+
+    # Require an API key on every /api/* route except an explicit allowlist.
+    # Registered as a before_request hook rather than per-route decorators so
+    # that any endpoint added later is protected by default.
+    from backend.utils.security import api_key_configured, check_api_key
+
+    @app.before_request
+    def enforce_api_key():
+        return check_api_key()
+
+    if not api_key_configured():
+        logger.error(
+            "🚨 API_ACCESS_KEY is not set - all /api/* requests will be "
+            "rejected with 503. Set it in the environment."
+        )
+    else:
+        logger.info("🔑 API key authentication enabled")
 
     # Validate settings
     if not validate_settings():
