@@ -90,7 +90,7 @@ function UserMenu({ user }: { user: User }) {
               {user.name.charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="text-[13.5px] font-medium whitespace-nowrap text-lilac-50/[0.82]">
+          <span className="hidden text-[13.5px] font-medium whitespace-nowrap text-lilac-50/[0.82] sm:inline">
             {user.name}
           </span>
         </button>
@@ -193,8 +193,11 @@ export default function App() {
       <AuroraBackdrop />
 
       <header className="sticky top-0 z-20 border-b border-lilac-50/[0.08] bg-ink-900/72 backdrop-blur-[18px]">
-        <div className="mx-auto flex max-w-[1280px] items-center justify-between px-7 py-3.5">
-          <div className="flex items-center gap-7">
+        {/* Wraps below ~975px: the six nav items plus the user block do not
+            fit a laptop-narrow window, and a horizontally scrolling header is
+            worse than a two-row one. */}
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-3 px-7 py-3.5">
+          <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
             <div className="flex items-center gap-[9px]">
               <BoltLogo />
               <span className="font-display text-[14.5px] font-bold tracking-[-.01em] whitespace-nowrap text-lilac-50">
