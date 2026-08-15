@@ -6,9 +6,10 @@
  * and GET /api/users/1 (username + account details).
  * Now also shows LinkedIn connection status.
  */
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getStatus, getUser } from '../api/client'
-import { getLinkedInStatus, API_BASE } from '../api/auth'
+import { getLinkedInStatus, getLinkedInAuthorizeUrl, openBlankTab } from '../api/auth'
 import { QueryError, QueryPending } from '../components/QueryStates'
 import { BTN_PRIMARY, H1, H2, META, SUB } from '../ui'
 import { useUserId } from '../current-user'
@@ -38,6 +39,32 @@ export default function Settings() {
 
   const handleReconnectInstagram = () => {
     alert('Reconnect flow — Phase 2\n\nReal Instagram re-authentication will be wired in the next sprint.')
+  }
+
+  const [reconnectError, setReconnectError] = useState<string | null>(null)
+
+  /**
+   * Re-connect runs in a new tab, leaving this page in place.
+   *
+   * The tab is claimed synchronously because popup blockers only permit
+   * window.open inside a user gesture, and the URL has to be fetched first:
+   * /start needs the bearer token, so navigating to it directly returns 401.
+   * That was the previous behaviour and the button never worked.
+   */
+  const handleReconnectLinkedIn = async () => {
+    setReconnectError(null)
+    const tab = openBlankTab()
+    try {
+      const url = await getLinkedInAuthorizeUrl()
+      if (tab) {
+        tab.location.href = url
+      } else {
+        window.location.href = url
+      }
+    } catch (err) {
+      tab?.close()
+      setReconnectError((err as Error).message)
+    }
   }
 
   const anyError = statusQuery.isError || userQuery.isError || linkedinQuery.isError
@@ -151,11 +178,14 @@ export default function Settings() {
                 <div className="border-t border-line bg-ink-950 px-5 py-4">
                   <button
                     type="button"
-                    onClick={() => { window.location.href = `${API_BASE}/api/auth/linkedin/start` }}
+                    onClick={() => void handleReconnectLinkedIn()}
                     className={BTN_PRIMARY}
                   >
                     Reconnect LinkedIn
                   </button>
+                  {reconnectError && (
+                    <p className="mt-3 text-[14px] text-danger-soft">{reconnectError}</p>
+                  )}
                 </div>
               </div>
 

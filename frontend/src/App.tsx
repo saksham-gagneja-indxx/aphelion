@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getMe, logout, type User } from './api/auth'
+import { useEffect } from 'react'
+import { getMe, logout, onSessionChangedInAnotherTab, type User } from './api/auth'
 import { CurrentUserProvider } from './current-user'
 import BoltLogo from './components/BoltLogo'
 import Landing from './components/Landing'
@@ -103,11 +104,22 @@ function UserMenu({ user }: { user: User }) {
 }
 
 export default function App() {
+  const queryClient = useQueryClient()
   const { data: user, isPending, isError, error } = useQuery({
     queryKey: ['me'],
     queryFn: getMe,
     retry: false, // Don't retry auth checks aggressively
   })
+
+  // Sign-in happens in a tab we open, so the token arrives in localStorage
+  // rather than through anything this tab did. Without this the page would sit
+  // on the landing screen until manually reloaded.
+  useEffect(
+    () => onSessionChangedInAnotherTab(() => {
+      void queryClient.invalidateQueries({ queryKey: ['me'] })
+    }),
+    [queryClient],
+  )
 
   // Global loading state while checking session
   if (isPending) {
