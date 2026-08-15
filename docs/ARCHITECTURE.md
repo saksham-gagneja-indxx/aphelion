@@ -547,10 +547,10 @@ decision, not something to smuggle in behind a button.
 
 | | |
 |---|---|
-| Model | `claude-opus-5` |
+| Model | `claude-haiku-4-5` — ~1¢ per suggestion |
 | Shape | one `messages.create`, no tools, no agent |
 | Output | structured outputs (`output_config.format`) — three `{angle, text}` objects |
-| Effort | `low` — short, well-scoped writing. Thinking stays on; disabling it on this model can leak internal tags into the response |
+| Effort / thinking | neither is sent — `output_config.effort` returns a 400 on Haiku 4.5, and the model has no adaptive thinking |
 | Vision | the reel's thumbnail as a base64 image block, when one exists |
 
 Three switches predated the feature and were wired to nothing:

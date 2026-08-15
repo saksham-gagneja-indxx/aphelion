@@ -26,10 +26,11 @@ from backend.utils.logger import get_logger
 
 logger = get_logger("social_media_automation.captions")
 
-# Opus 5. Caption writing is short but it is voice-sensitive and it publishes
-# under a real person's name, so this is not the place to economise on the
-# model. Cost is controlled with effort and max_tokens instead.
-MODEL = "claude-opus-5"
+# Haiku 4.5, chosen for cost: roughly a fifth of Opus per suggestion, and a
+# caption is short enough that the quality gap is acceptable. Note this model
+# does NOT accept output_config.effort - passing it returns a 400 - and it has
+# no adaptive thinking, so `thinking` is omitted entirely below.
+MODEL = "claude-haiku-4-5"
 
 # Three captions plus their angles fit comfortably; the cap is a backstop
 # against a runaway response, not a length target.
@@ -197,11 +198,10 @@ def suggest_captions(
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=SYSTEM,
-            # Low effort: this is a short, well-scoped writing task. Thinking is
-            # left on (its default on this model) rather than disabled, which
-            # can leak internal tags into the response.
+            # Format only. `effort` is not supported on Haiku 4.5 and returns
+            # a 400, and omitting `thinking` means no thinking tokens - which
+            # was the larger half of the per-request cost.
             output_config={
-                "effort": "low",
                 "format": {"type": "json_schema", "schema": CAPTION_SCHEMA},
             },
             messages=[{"role": "user", "content": content}],

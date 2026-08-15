@@ -186,7 +186,7 @@ def test_returns_three_captions(app, client):
     ]
 
 
-def test_model_is_called_with_the_brief_and_low_effort(app, client):
+def test_model_is_called_with_the_brief_and_no_effort_param(app, client):
     uid = make_user(app)
 
     with patch("anthropic.Anthropic") as sdk:
@@ -200,8 +200,10 @@ def test_model_is_called_with_the_brief_and_low_effort(app, client):
         )
         kwargs = sdk.return_value.messages.create.call_args.kwargs
 
-    assert kwargs["model"] == "claude-opus-5"
-    assert kwargs["output_config"]["effort"] == "low"
+    assert kwargs["model"] == "claude-haiku-4-5"
+    # effort is rejected with a 400 on Haiku 4.5 - it must not be sent.
+    assert "effort" not in kwargs["output_config"]
+    assert "thinking" not in kwargs
     assert kwargs["output_config"]["format"]["type"] == "json_schema"
     sent = json.dumps(kwargs["messages"])
     assert "byte-range uploads explained" in sent
