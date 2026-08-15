@@ -22,7 +22,9 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Schedule a post for later | ✅ working |
 | Retract (delete) a published post | ✅ working |
 | Queue — every post from draft to published, with failure reasons | ✅ working |
+| Delete a reel or post, reversible for 15 seconds | ✅ working |
 | Sign in with LinkedIn (OAuth 2.0) | ✅ working |
+| Guided setup that checks each step, including the publish scope | ✅ working |
 | Roles, user approval, admin panel | ✅ working |
 | Audit log (who published what, when) | ✅ working |
 | Analytics | ⚠️ scaffolded — no real LinkedIn metrics yet |
@@ -31,7 +33,8 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Publish to a **company page** | ⛔ blocked on LinkedIn partner approval |
 | AI caption assist | ✅ working — three drafts from your one-line brief; needs a real `CLAUDE_API_KEY` |
 
-**Tests:** 119 backend (pytest) + 27 frontend (vitest), all passing.
+**Tests:** 152 backend (pytest) + 35 frontend (vitest), all passing. CI runs
+both on every push to `main`.
 
 ---
 
@@ -75,8 +78,11 @@ scaffold exists today and is deliberately switched off.
 
 ## The flow
 
+One screen (`/compose`): pick a video — a new upload or one already there —
+write a caption, then choose *post now* or *schedule for later*.
+
 ```
-  Upload                Schedule  ──or──  Post now
+  Video                 Schedule  ──or──  Post now
     │                       │                 │
     │  browser validates    │                 │
     │  duration + size      │                 │
@@ -100,8 +106,12 @@ obviously-wrong file fails in milliseconds instead of after a 16 MB transfer.
 The server never trusts it and re-validates with `ffprobe` regardless.
 
 An upload keeps running if you navigate to another page — its state lives
-outside React, so leaving the Upload page and coming back shows the transfer
-still in progress rather than an empty dropzone.
+outside React, so leaving and coming back shows the transfer still in progress
+rather than an empty dropzone.
+
+Deleting a reel or a post is reversible for 15 seconds: nothing is sent until
+the window closes, so the undo is real rather than a compensating delete. A
+reel that a not-yet-published post still points at is refused outright.
 
 ---
 
@@ -179,11 +189,49 @@ approving from the Admin panel.
 pytest tests/ -q                 # 119 backend tests
 cd frontend
 npx tsc --noEmit                 # types
-npx vitest run                   # 27 frontend tests
+npx vitest run                   # 35 frontend tests
 npm run build                    # the build Docker will run
 ```
 
-Run all four before merging to `main` — it deploys straight to production.
+Run all four before merging to `main` — it deploys straight to production. CI
+runs the same checks on every push.
+
+---
+
+## Becoming the administrator
+
+The admin role is pinned to a LinkedIn identity (`ADMIN_LINKEDIN_SUBS`, keyed
+on the OIDC `sub` claim). That claim is not knowable until the person has
+signed in once, so there is a chicken-and-egg step:
+
+```bash
+python -m backend.admin_cli list           # who exists
+python -m backend.admin_cli reset-users --yes   # only if the DB has test accounts
+# → sign in with LinkedIn. The first account on an empty database becomes an
+#   active admin.
+python -m backend.admin_cli pin            # writes that account's sub to .env
+```
+
+`pin` closes the bootstrap permanently: the "first account wins" rule turns
+off, and the role is re-asserted on every sign-in — so editing the database by
+hand cannot take it away, and nobody else can claim it even on an empty
+database. Restart the server afterwards.
+
+Everyone who signs in after that is created **inactive** and appears in the
+Admin panel's approval queue, with a count on the nav item. Until approved,
+their session is refused on every request.
+
+Other commands:
+
+```bash
+python -m backend.admin_cli promote <id|email>
+python -m backend.admin_cli demote  <id|email>   # refuses the last admin
+python -m backend.admin_cli sign-out-all --yes   # rotates SECRET_KEY
+```
+
+`sign-out-all` works because session tokens are stateless and signed with
+`SECRET_KEY` — there is no session table to clear, so rotating the key is what
+invalidates every issued token at once.
 
 ---
 
@@ -231,7 +279,7 @@ backend/
   utils/        security, config, database, logging, time
 frontend/src/
   api/          typed client modules, upload store
-  pages/        Upload, Schedule, Queue, Analytics, Settings, Admin
+  pages/        Compose, Queue, Analytics, Setup, Docs, Settings, Admin
   components/
 tests/          119 backend tests
 docs/
