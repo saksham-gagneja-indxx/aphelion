@@ -6,9 +6,6 @@
  *
  * Filterable by status. Cancel button on scheduled posts.
  * Uses the exhaustive isPending/isError/isSuccess+empty branch pattern.
- *
- * Surface treatment: dark glass v1. Structure, copy and behaviour are
- * unchanged from the light build — only the skin differs.
  */
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,64 +17,58 @@ import {
   type PostStatus,
 } from '../api/queue'
 import { QueryError, QueryPending, QueryEmpty } from '../components/QueryStates'
+import { BANNER_DANGER, BANNER_OK, BTN_QUIET, H1, META, SUB } from '../ui'
 
 const USER_ID = 1
 
 const ALL_STATUSES: PostStatus[] = ['draft', 'queued', 'scheduled', 'posted', 'failed', 'cancelled']
 
 /**
- * One row per PostStatus. `hex` is the dot colour — it also tints the
- * thumbnail gradient, which is the only place the raw value is needed.
+ * Six states in violet, white and black.
+ *
+ * With colour coding gone the load moves to fill and border: violet intensity
+ * climbs draft → scheduled → posted, cancelled takes a dashed rule to read as
+ * "stopped" rather than "not started", and failed keeps a hue of its own
+ * because a broken post is the one thing this screen exists to surface.
  */
-const STATUS_CONFIG: Record<
-  PostStatus,
-  { label: string; hex: string; dot: string; pill: string }
-> = {
+const STATUS_CONFIG: Record<PostStatus, { label: string; dot: string; pill: string }> = {
   draft: {
     label: 'Draft',
-    hex: '#94A3B8',
-    dot: 'bg-status-draft',
-    pill: 'bg-status-draft/[0.13] text-[#CBD5E1] border-status-draft/30',
+    dot: 'bg-mist-500',
+    pill: 'border-line bg-ink-900 text-mist-500',
   },
   queued: {
     label: 'Queued',
-    hex: '#60A5FA',
-    dot: 'bg-status-queued',
-    pill: 'bg-status-queued/[0.13] text-[#93C5FD] border-status-queued/30',
+    dot: 'bg-mist-200',
+    pill: 'border-line bg-ink-900 text-mist-200',
   },
   scheduled: {
     label: 'Scheduled',
-    hex: '#AA3BFF',
-    dot: 'bg-status-scheduled',
-    pill: 'bg-status-scheduled/[0.16] text-[#C9A9FF] border-status-scheduled/[0.32]',
+    dot: 'bg-violet-500',
+    pill: 'border-violet-500/45 bg-violet-500/[0.12] text-violet-300',
   },
   posted: {
     label: 'Posted',
-    hex: '#34D399',
-    dot: 'bg-status-posted',
-    pill: 'bg-status-posted/[0.13] text-[#6EE7B7] border-status-posted/30',
+    dot: 'bg-violet-300',
+    pill: 'border-violet-500/50 bg-violet-900 text-violet-200',
   },
   failed: {
     label: 'Failed',
-    hex: '#FB7185',
-    dot: 'bg-status-failed',
-    pill: 'bg-status-failed/[0.12] text-[#FDA4AF] border-status-failed/[0.32]',
+    dot: 'bg-danger',
+    pill: 'border-danger/45 bg-danger/[0.1] text-danger-soft',
   },
   cancelled: {
     label: 'Cancelled',
-    hex: '#FBBF24',
-    dot: 'bg-status-cancelled',
-    pill: 'bg-status-cancelled/[0.12] text-[#FCD34D] border-status-cancelled/30',
+    dot: 'bg-mist-500',
+    pill: 'border-dashed border-mist-500/60 bg-transparent text-mist-500',
   },
 }
 
 function StatusPill({ status }: { status: PostStatus }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-[3px] text-[11.5px] font-semibold ${cfg.pill}`}
-    >
-      <span className={`inline-block h-[5px] w-[5px] rounded-full ${cfg.dot}`} />
+    <span className={`inline-flex items-center gap-2 border px-2.5 py-0.5 text-[13px] ${cfg.pill}`}>
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
       {cfg.label}
     </span>
   )
@@ -109,24 +100,16 @@ function PostCard({
   const isScheduled = post.status === 'scheduled'
   const errorMessage = post.error_message
   const retryCount = post.retry_count ?? 0
-  const cfg = STATUS_CONFIG[post.status] ?? STATUS_CONFIG.draft
 
   return (
     <li
-      className={`overflow-hidden rounded-2xl border backdrop-blur-[20px] transition-transform duration-200 hover:-translate-y-0.5 ${
-        isFailed
-          ? 'border-status-failed/[0.28] bg-status-failed/[0.05] shadow-[0_8px_30px_rgba(251,113,133,.08)]'
-          : 'border-lilac-50/[0.09] bg-lilac-50/[0.035] shadow-[0_8px_30px_rgba(0,0,0,.3)]'
+      className={`border transition-colors ${
+        isFailed ? 'border-danger/40 bg-danger/[0.04]' : 'border-line bg-ink-900 hover:bg-ink-800'
       }`}
     >
-      <div className="flex gap-4 p-4">
+      <div className="flex gap-5 p-5">
         {/* Thumbnail */}
-        <div
-          className="flex h-20 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-lilac-50/10"
-          style={{
-            background: `linear-gradient(150deg, ${cfg.hex}38, rgba(134,59,255,.10))`,
-          }}
-        >
+        <div className="flex h-20 w-14 shrink-0 items-center justify-center overflow-hidden border border-line bg-ink-800">
           {post.thumbnail_path ? (
             <img
               src={thumbnailUrl(USER_ID, post.thumbnail_path)}
@@ -136,7 +119,7 @@ function PostCard({
             />
           ) : (
             <svg
-              className="h-5 w-5 text-lilac-50/35"
+              className="h-5 w-5 text-mist-500"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -153,40 +136,40 @@ function PostCard({
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <StatusPill status={post.status} />
             {post.video_duration != null && (
-              <span className="text-xs text-lilac-50/35">{post.video_duration.toFixed(1)}s</span>
+              <span className={META}>{post.video_duration.toFixed(1)}s</span>
             )}
             {isScheduled && (
               <button
                 type="button"
                 onClick={() => onCancel(post.id)}
                 disabled={isCancelling}
-                className="ml-auto shrink-0 rounded-lg border border-lilac-50/[0.16] px-[11px] py-[5px] text-xs text-lilac-50/60 transition hover:border-status-failed/50 hover:text-status-failed disabled:opacity-50"
+                className="ml-auto shrink-0 border border-line px-3 py-1 text-[14px] text-mist-500 transition hover:border-danger/50 hover:text-danger disabled:opacity-40"
               >
                 {isCancelling ? 'Cancelling…' : 'Cancel'}
               </button>
             )}
           </div>
 
-          <p className="mt-2.5 line-clamp-2 text-sm leading-relaxed text-lilac-50/80">
-            {post.caption || <span className="italic text-lilac-50/35">No caption</span>}
+          <p className="mt-3 line-clamp-2 text-[16px] leading-[1.5] text-mist-50">
+            {post.caption || <span className="text-mist-500 italic">No caption</span>}
           </p>
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-[18px] gap-y-1 text-xs text-lilac-50/35">
+          <div className={`${META} mt-3 flex flex-wrap items-center gap-x-6 gap-y-1`}>
             {post.scheduled_time && (
               <span>
-                Scheduled: <span className="text-lilac-50/62">{formatWhen(post.scheduled_time)}</span>
+                Scheduled: <span className="text-mist-200">{formatWhen(post.scheduled_time)}</span>
               </span>
             )}
             {post.posted_at && (
               <span>
-                Posted: <span className="text-lilac-50/62">{formatWhen(post.posted_at)}</span>
+                Posted: <span className="text-mist-200">{formatWhen(post.posted_at)}</span>
               </span>
             )}
             <span>
-              Created: <span className="text-lilac-50/62">{formatWhen(post.created_at)}</span>
+              Created: <span className="text-mist-200">{formatWhen(post.created_at)}</span>
             </span>
           </div>
         </div>
@@ -194,12 +177,8 @@ function PostCard({
 
       {/* Error details — prominent for FAILED posts */}
       {isFailed && (
-        <div className="flex items-start gap-2.5 border-t border-status-failed/[0.22] bg-status-failed/[0.09] px-4 py-3.5">
-          <svg
-            className="mt-px h-[17px] w-[17px] shrink-0 text-status-failed"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
+        <div className="flex items-start gap-3 border-t border-danger/30 bg-danger/[0.07] px-5 py-4">
+          <svg className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" fill="currentColor" viewBox="0 0 20 20">
             <path
               fillRule="evenodd"
               d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
@@ -207,19 +186,19 @@ function PostCard({
             />
           </svg>
           <div className="min-w-0">
-            <p className="text-[13.5px] font-semibold text-[#FDA4AF]">
+            <p className="text-[15px] text-danger-soft">
               Posting failed
               {retryCount > 0 && (
-                <span className="ml-2 font-normal text-[#FDA4AF]/70">
+                <span className="ml-2 text-danger-soft/60">
                   ({retryCount} {retryCount === 1 ? 'retry' : 'retries'})
                 </span>
               )}
             </p>
             {errorMessage && (
-              <p className="mt-[3px] text-[13.5px] break-words text-[#FDA4AF]/85">{errorMessage}</p>
+              <p className="mt-1 text-[15px] break-words text-danger-soft/75">{errorMessage}</p>
             )}
             {!errorMessage && (
-              <p className="mt-[3px] text-[13.5px] italic text-[#FDA4AF]/70">
+              <p className="mt-1 text-[15px] text-danger-soft/60 italic">
                 No error details available — check backend logs.
               </p>
             )}
@@ -262,27 +241,19 @@ export default function Queue() {
   }, {})
 
   return (
-    <div className="mx-auto max-w-[820px] animate-rise-in">
+    <div className="mx-auto max-w-[880px] animate-rise-in">
       <div className="flex items-start justify-between gap-6">
         <div>
-          <h1 className="font-display text-[34px] leading-tight font-bold tracking-[-.03em] text-lilac-50">
-            Post Queue
-          </h1>
-          <p className="mt-2 text-[14.5px] text-lilac-50/50">
-            Track every post from draft to published — or find out why it failed.
-          </p>
+          <h1 className={H1}>Post Queue</h1>
+          <p className={SUB}>Track every post from draft to published — or find out why it failed.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => void query.refetch()}
-          className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-lilac-50/[0.14] bg-lilac-50/[0.06] px-[15px] py-[9px] text-[13.5px] font-semibold whitespace-nowrap text-lilac-50 backdrop-blur-[12px] transition hover:bg-lilac-50/[0.12]"
-        >
+        <button type="button" onClick={() => void query.refetch()} className={`${BTN_QUIET} shrink-0`}>
           <svg
-            className="h-[15px] w-[15px]"
+            className="h-4 w-4"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={1.8}
+            strokeWidth={1.6}
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -295,14 +266,14 @@ export default function Queue() {
 
       {/* Status filter pills */}
       {query.isSuccess && posts.length > 0 && (
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-8 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`rounded-pill border px-3.5 py-1.5 text-[12.5px] font-semibold transition ${
+            className={`border px-3.5 py-1.5 text-[14px] transition ${
               filter === 'all'
-                ? 'border-lilac-50/[0.92] bg-lilac-50/[0.92] text-ink-900'
-                : 'border-lilac-50/10 bg-lilac-50/5 text-lilac-50/60 hover:bg-lilac-50/10'
+                ? 'border-mist-50 bg-mist-50 text-ink-950'
+                : 'border-line bg-ink-900 text-mist-500 hover:text-mist-50'
             }`}
           >
             All ({posts.length})
@@ -314,10 +285,8 @@ export default function Queue() {
                 key={s}
                 type="button"
                 onClick={() => setFilter(s)}
-                className={`rounded-pill border px-3.5 py-1.5 text-[12.5px] font-semibold transition ${
-                  filter === s
-                    ? cfg.pill
-                    : 'border-lilac-50/10 bg-lilac-50/5 text-lilac-50/60 hover:bg-lilac-50/10'
+                className={`border px-3.5 py-1.5 text-[14px] transition ${
+                  filter === s ? cfg.pill : 'border-line bg-ink-900 text-mist-500 hover:text-mist-50'
                 }`}
               >
                 {cfg.label} ({counts[s]})
@@ -329,8 +298,8 @@ export default function Queue() {
 
       {/* Mutation error */}
       {cancelMutation.isError && (
-        <div className="mt-4 rounded-xl border border-status-failed/[0.26] bg-status-failed/[0.09] px-[15px] py-[13px]">
-          <p className="text-[13.5px] text-[#FDA4AF]">
+        <div className={`${BANNER_DANGER} mt-6`}>
+          <p className="text-[15px] text-danger-soft">
             Cancel failed: {(cancelMutation.error as Error).message}
           </p>
         </div>
@@ -338,13 +307,13 @@ export default function Queue() {
 
       {/* Mutation success */}
       {cancelMutation.isSuccess && (
-        <div className="mt-4 rounded-xl border border-status-posted/[0.26] bg-status-posted/[0.09] px-[15px] py-[13px]">
-          <p className="text-[13.5px] text-[#6EE7B7]">Post cancelled successfully.</p>
+        <div className={`${BANNER_OK} mt-6`}>
+          <p className="text-[15px] text-violet-200">Post cancelled successfully.</p>
         </div>
       )}
 
       {/* Query state branches: error → pending → empty → data */}
-      <div className="mt-6">
+      <div className="mt-8">
         {query.isError && (
           <QueryError
             title="Could not load posts"
@@ -366,7 +335,7 @@ export default function Queue() {
         {query.isSuccess && posts.length > 0 && (
           <>
             {filtered.length === 0 ? (
-              <p className="py-8 text-center text-[13.5px] text-lilac-50/45">
+              <p className="py-10 text-center text-[16px] text-mist-500">
                 No {filter} posts. Try a different filter.
               </p>
             ) : (

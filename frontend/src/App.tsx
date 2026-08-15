@@ -9,45 +9,33 @@ import Queue from './pages/Queue'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 import Admin from './pages/Admin'
+import { BANNER_DANGER, BTN_OUTLINE } from './ui'
 
 /**
- * Aurora + grid backdrop from the dark-glass handoff.
- *
- * Fixed rather than absolute so the blobs stay put while the page scrolls —
- * a 1440px design frame has no scroll, a real page does. The layered
- * gradients live in `style` because Tailwind arbitrary values get unreadable
- * once a background stacks three images with their own colour stops.
+ * The 72px hairline grid. Static and flat — this system has no aurora, no
+ * blur and no drifting gradients; depth comes from 1px rules alone.
  */
-function AuroraBackdrop() {
+export function GridBackdrop() {
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
-      <div
-        className="animate-drift-a absolute -top-[340px] left-[32%] h-[640px] w-[900px] rounded-full blur-[40px]"
-        style={{ background: 'radial-gradient(closest-side, rgba(134,59,255,.30), transparent)' }}
-      />
-      <div
-        className="animate-drift-b absolute -top-[200px] -left-[160px] h-[560px] w-[620px] rounded-full blur-[40px]"
-        style={{ background: 'radial-gradient(closest-side, rgba(170,59,255,.18), transparent)' }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(237,230,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(237,230,255,.035) 1px, transparent 1px)',
-          backgroundSize: '72px 72px',
-          maskImage: 'linear-gradient(180deg, #000, transparent 55%)',
-          WebkitMaskImage: 'linear-gradient(180deg, #000, transparent 55%)',
-        }}
-      />
-    </div>
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0"
+      style={{
+        backgroundImage:
+          'linear-gradient(#272727 1px, transparent 1px), linear-gradient(90deg, #272727 1px, transparent 1px)',
+        backgroundSize: '72px 72px',
+        maskImage: 'linear-gradient(180deg, rgba(0,0,0,.5), transparent 60%)',
+        WebkitMaskImage: 'linear-gradient(180deg, rgba(0,0,0,.5), transparent 60%)',
+      }}
+    />
   )
 }
 
 /** Full-page shell for the pre-authentication states. */
 function AuthGate({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-ink-900 px-4 py-12">
-      <AuroraBackdrop />
+    <div className="relative flex min-h-screen items-center justify-center bg-ink-950 px-4 py-12">
+      <GridBackdrop />
       <div className="relative z-10 w-full max-w-md">{children}</div>
     </div>
   )
@@ -66,42 +54,44 @@ function UserMenu({ user }: { user: User }) {
 
   return (
     <div className="flex items-center gap-4">
+      {/* Connection state reads in violet or grey — the status palette is
+          reserved for posts, and this is not one. */}
       {user.linkedin_connected ? (
-        <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold whitespace-nowrap text-[#6EE7B7]">
-          <span className="h-[5px] w-[5px] rounded-full bg-status-posted" />
+        <span className="hidden items-center gap-2 text-[14px] whitespace-nowrap text-mist-200 md:inline-flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
           LinkedIn connected
         </span>
       ) : (
-        <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold whitespace-nowrap text-[#FCD34D]">
-          <span className="h-[5px] w-[5px] rounded-full bg-status-cancelled" />
+        <span className="hidden items-center gap-2 text-[14px] whitespace-nowrap text-mist-500 md:inline-flex">
+          <span className="h-1.5 w-1.5 rounded-full bg-mist-500" />
           LinkedIn not connected
         </span>
       )}
       <div className="group relative">
-        <button className="flex items-center gap-[9px] focus:outline-none">
+        <button className="flex items-center gap-2.5">
           {user.avatar_url ? (
             <img
               src={user.avatar_url}
               alt={user.name}
-              className="h-[30px] w-[30px] rounded-full object-cover ring-1 ring-lilac-50/[0.12]"
+              className="h-7 w-7 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[linear-gradient(150deg,#AA3BFF,#531ABE)] text-xs font-bold text-white ring-1 ring-lilac-50/[0.12]">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
               {user.name.charAt(0).toUpperCase()}
             </div>
           )}
-          <span className="hidden text-[13.5px] font-medium whitespace-nowrap text-lilac-50/[0.82] sm:inline">
+          <span className="hidden text-[15px] whitespace-nowrap text-mist-200 sm:inline">
             {user.name}
           </span>
         </button>
 
         {/* Dropdown menu */}
-        <div className="glass-overlay invisible absolute right-0 z-20 mt-2 w-48 origin-top-right rounded-xl py-1 opacity-0 transition-all duration-150 group-hover:visible group-hover:opacity-100">
+        <div className="surface-raised invisible absolute right-0 z-20 mt-2 w-48 origin-top-right opacity-0 transition-all duration-150 group-hover:visible group-hover:opacity-100">
           <button
             type="button"
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="block w-full px-4 py-2 text-left text-[13.5px] text-lilac-50/80 transition hover:bg-lilac-50/[0.06] hover:text-lilac-50 disabled:opacity-50"
+            className="block w-full px-4 py-2.5 text-left text-[15px] text-mist-200 transition hover:bg-ink-900 hover:text-mist-50 disabled:opacity-40"
           >
             {logoutMutation.isPending ? 'Signing out...' : 'Sign out'}
           </button>
@@ -123,8 +113,8 @@ export default function App() {
     return (
       <AuthGate>
         <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-violet-400 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
-          <p className="mt-4 text-sm font-medium text-lilac-50/62">Checking authentication…</p>
+          <div className="inline-block h-7 w-7 animate-spin rounded-full border-2 border-solid border-violet-500 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+          <p className="mt-4 text-[16px] text-mist-500">Checking authentication…</p>
         </div>
       </AuthGate>
     )
@@ -139,11 +129,11 @@ export default function App() {
   if (isError && error.message === 'Forbidden') {
     return (
       <AuthGate>
-        <div className="glass-overlay rounded-[28px] p-10 text-center">
-          <h2 className="font-display text-[30px] font-bold tracking-[-.03em] text-lilac-50">
+        <div className="surface p-10 text-center">
+          <h2 className="font-display text-[32px] font-light tracking-[-.02em] text-mist-50">
             Account Pending
           </h2>
-          <p className="mt-4 text-[14.5px] text-lilac-50/62">
+          <p className="mt-3 text-[16px] leading-[1.6] text-mist-500">
             Your account is awaiting admin approval. Please check back later.
           </p>
           <button
@@ -153,7 +143,7 @@ export default function App() {
               localStorage.removeItem('smm.session')
               window.location.reload()
             }}
-            className="mt-8 flex w-full items-center justify-center gap-3 rounded-pill border border-lilac-50/[0.14] bg-lilac-50/[0.07] px-4 py-3 text-sm font-semibold text-lilac-50 transition hover:bg-lilac-50/[0.13]"
+            className={`${BTN_OUTLINE} mt-8 w-full`}
           >
             Sign in with a different account
           </button>
@@ -166,9 +156,9 @@ export default function App() {
   if (isError || !user) {
     return (
       <AuthGate>
-        <div className="rounded-2xl border border-status-failed/[0.28] bg-status-failed/[0.07] p-6 text-center">
-          <p className="text-sm font-semibold text-[#FDA4AF]">Authentication Service Error</p>
-          <p className="mt-2 text-sm text-[#FDA4AF]/85">
+        <div className={`${BANNER_DANGER} text-center`}>
+          <p className="text-[16px] text-danger-soft">Authentication Service Error</p>
+          <p className="mt-1 text-[15px] text-danger-soft/70">
             {error?.message || 'Failed to verify session'}
           </p>
         </div>
@@ -189,18 +179,18 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-full bg-ink-900">
-      <AuroraBackdrop />
+    <div className="relative min-h-full bg-ink-950">
+      <GridBackdrop />
 
-      <header className="sticky top-0 z-20 border-b border-lilac-50/[0.08] bg-ink-900/72 backdrop-blur-[18px]">
+      <header className="sticky top-0 z-20 border-b border-line bg-ink-950">
         {/* Wraps below ~975px: the six nav items plus the user block do not
             fit a laptop-narrow window, and a horizontally scrolling header is
             worse than a two-row one. */}
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-3 px-7 py-3.5">
-          <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
-            <div className="flex items-center gap-[9px]">
-              <BoltLogo />
-              <span className="font-display text-[14.5px] font-bold tracking-[-.01em] whitespace-nowrap text-lilac-50">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-3 px-7 py-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
+            <div className="flex items-center gap-2.5">
+              <BoltLogo className="text-violet-500" />
+              <span className="font-display text-[16px] font-medium tracking-[-.01em] whitespace-nowrap text-mist-50">
                 Reel Automation
               </span>
             </div>
@@ -209,11 +199,13 @@ export default function App() {
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  /* Active is a violet underline, not a filled chip — the fill
+                     treatment belongs to the primary button alone. */
                   className={({ isActive }) =>
-                    `rounded-[9px] border px-[13px] py-[7px] text-[13.5px] whitespace-nowrap transition ${
+                    `border-b-2 px-3 py-1.5 text-[15px] whitespace-nowrap transition ${
                       isActive
-                        ? 'border-lilac-50/[0.12] bg-lilac-50/[0.08] font-semibold text-lilac-50'
-                        : 'border-transparent text-lilac-50/58 hover:text-lilac-50'
+                        ? 'border-violet-500 text-mist-50'
+                        : 'border-transparent text-mist-500 hover:text-mist-50'
                     }`
                   }
                 >
@@ -226,7 +218,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="relative z-10 px-7 pt-11 pb-16">
+      <main className="relative z-10 px-7 pt-14 pb-20">
         <Routes>
           <Route path="/" element={<Navigate to="/upload" replace />} />
           <Route path="/upload" element={<Upload />} />

@@ -34,11 +34,11 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-ink-900 p-6">
-          <div className="glass-overlay w-full max-w-md rounded-[28px] p-8 text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-status-failed/[0.12]">
+        <div className="flex min-h-screen items-center justify-center bg-ink-950 p-6">
+          <div className="surface w-full max-w-md p-8 text-center">
+            <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-danger/40 bg-danger/[0.08]">
               <svg
-                className="h-6 w-6 text-status-failed"
+                className="h-6 w-6 text-danger"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -51,21 +51,21 @@ export class ErrorBoundary extends Component<Props, State> {
                 />
               </svg>
             </div>
-            <h1 className="font-display text-lg font-bold tracking-[-.02em] text-lilac-50">
+            <h1 className="font-display text-[24px] font-light tracking-[-.02em] text-mist-50">
               Something went wrong
             </h1>
-            <p className="mt-2 text-sm text-lilac-50/62">
+            <p className="mt-2 text-[16px] text-mist-500">
               An unexpected error occurred while rendering the page.
             </p>
             {this.state.error && (
-              <pre className="mt-4 max-h-40 overflow-auto rounded-xl border border-status-failed/[0.26] bg-status-failed/[0.09] p-3 text-left text-xs text-[#FDA4AF]">
+              <pre className="mt-5 max-h-40 overflow-auto border border-danger/40 bg-danger/[0.07] p-3 text-left text-[14px] text-danger-soft">
                 {this.state.error.message}
               </pre>
             )}
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-6 rounded-pill bg-[linear-gradient(180deg,#AA3BFF,#7E14FF)] px-5 py-2.5 text-sm font-semibold text-white shadow-glow transition hover:brightness-110"
+              className="mt-6 bg-mist-50 px-[18px] py-2.5 text-[16px] text-ink-950 transition hover:bg-mist-200"
             >
               Reload page
             </button>

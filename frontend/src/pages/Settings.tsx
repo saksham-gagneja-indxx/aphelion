@@ -18,13 +18,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { getStatus, getUser } from '../api/client'
 import { QueryError, QueryPending } from '../components/QueryStates'
+import { BTN_PRIMARY, H1, H2, META, SUB } from '../ui'
 
 const USER_ID = 1
 
-/** Definition row: 12px vertical rhythm, hairline separator between entries. */
-const DEF_ROW =
-  'flex items-center justify-between border-b border-lilac-50/[0.05] py-3'
-const LAST_DEF_ROW = 'flex items-center justify-between py-3'
+/** Definition row: hairline separator between entries, none after the last. */
+const DEF_ROW = 'flex items-center justify-between border-b border-line py-3.5'
+const LAST_DEF_ROW = 'flex items-center justify-between py-3.5'
 
 export default function Settings() {
   const statusQuery = useQuery({
@@ -55,14 +55,10 @@ export default function Settings() {
 
   return (
     <div className="mx-auto max-w-2xl animate-rise-in">
-      <h1 className="font-display text-[34px] leading-tight font-bold tracking-[-.03em] text-lilac-50">
-        Settings
-      </h1>
-      <p className="mt-2 text-[14.5px] text-lilac-50/50">
-        Account and connection configuration
-      </p>
+      <h1 className={H1}>Settings</h1>
+      <p className={SUB}>Account and connection configuration</p>
 
-      <div className="mt-[30px] space-y-5">
+      <div className="mt-10 space-y-3">
         {/* --- Error state (first branch — never fall through to data) --- */}
         {anyError && (
           <>
@@ -100,25 +96,27 @@ export default function Settings() {
           return (
             <>
               {/* Instagram connection card */}
-              <div className="glass overflow-hidden rounded-[18px]">
-                <div className="flex items-center justify-between border-b border-lilac-50/[0.07] px-5 py-4">
-                  <h2 className="text-sm font-semibold text-lilac-50">Instagram Connection</h2>
+              <div className="surface">
+                <div className="flex items-center justify-between border-b border-line px-5 py-4">
+                  <h2 className={H2}>Instagram Connection</h2>
+                  {/* Three states, no three hues: connected fills violet,
+                      configured outlines it, not-connected stays grey. */}
                   <span
-                    className={`inline-flex items-center gap-[7px] rounded-pill border px-3 py-1 text-xs font-semibold ${
+                    className={`inline-flex items-center gap-2 border px-3 py-1 text-[14px] ${
                       isConnected && instagramConfigured
-                        ? 'border-status-posted/30 bg-status-posted/[0.12] text-[#6EE7B7]'
+                        ? 'border-violet-500/50 bg-violet-900 text-violet-200'
                         : instagramConfigured
-                          ? 'border-status-cancelled/30 bg-status-cancelled/[0.12] text-[#FCD34D]'
-                          : 'border-status-failed/[0.3] bg-status-failed/[0.12] text-[#FDA4AF]'
+                          ? 'border-violet-500/40 bg-violet-500/[0.1] text-violet-300'
+                          : 'border-line bg-ink-900 text-mist-500'
                     }`}
                   >
                     <span
                       className={`inline-block h-1.5 w-1.5 rounded-full ${
                         isConnected && instagramConfigured
-                          ? 'bg-status-posted'
+                          ? 'bg-violet-300'
                           : instagramConfigured
-                            ? 'bg-status-cancelled'
-                            : 'bg-status-failed'
+                            ? 'bg-violet-500'
+                            : 'bg-mist-500'
                       }`}
                     />
                     {isConnected && instagramConfigured
@@ -129,36 +127,36 @@ export default function Settings() {
                   </span>
                 </div>
 
-                <div className="px-5 py-1.5">
-                  <dl className="text-[13.5px]">
+                <div className="px-5 py-1">
+                  <dl className="text-[16px]">
                     <div className={DEF_ROW}>
-                      <dt className="text-lilac-50/50">Username</dt>
-                      <dd className="font-semibold text-lilac-50">
+                      <dt className="text-mist-500">Username</dt>
+                      <dd className="text-mist-50">
                         {username ? `@${username}` : '—'}
                       </dd>
                     </div>
                     {accountName && (
                       <div className={DEF_ROW}>
-                        <dt className="text-lilac-50/50">Account name</dt>
-                        <dd className="font-semibold text-lilac-50">{accountName}</dd>
+                        <dt className="text-mist-500">Account name</dt>
+                        <dd className="text-mist-50">{accountName}</dd>
                       </div>
                     )}
                     <div className={DEF_ROW}>
-                      <dt className="text-lilac-50/50">Credentials in .env</dt>
-                      <dd className="font-semibold text-lilac-50">
+                      <dt className="text-mist-500">Credentials in .env</dt>
+                      <dd className="text-mist-50">
                         {instagramConfigured ? 'Yes' : 'No'}
                       </dd>
                     </div>
                     <div className={DEF_ROW}>
-                      <dt className="text-lilac-50/50">Authenticated</dt>
-                      <dd className="font-semibold text-lilac-50">
+                      <dt className="text-mist-500">Authenticated</dt>
+                      <dd className="text-mist-50">
                         {isConnected ? 'Yes' : 'No'}
                       </dd>
                     </div>
                     {lastLogin && (
                       <div className={LAST_DEF_ROW}>
-                        <dt className="text-lilac-50/50">Last login</dt>
-                        <dd className="text-lilac-50/72">
+                        <dt className="text-mist-500">Last login</dt>
+                        <dd className="text-mist-200">
                           {new Date(lastLogin).toLocaleString()}
                         </dd>
                       </div>
@@ -166,33 +164,29 @@ export default function Settings() {
                   </dl>
                 </div>
 
-                <div className="flex items-center gap-3.5 border-t border-lilac-50/[0.07] bg-ink-950/30 px-5 py-3.5">
-                  <button
-                    type="button"
-                    onClick={handleReconnect}
-                    className="rounded-pill bg-[linear-gradient(180deg,#AA3BFF,#7E14FF)] px-[18px] py-[9px] text-[13px] font-semibold text-white shadow-[0_4px_18px_rgba(134,59,255,.35)] transition hover:brightness-110"
-                  >
+                <div className="flex flex-wrap items-center gap-4 border-t border-line bg-ink-950 px-5 py-4">
+                  <button type="button" onClick={handleReconnect} className={BTN_PRIMARY}>
                     Reconnect Instagram
                   </button>
-                  <span className="text-xs text-lilac-50/32">Phase 2 — shows alert for now</span>
+                  <span className={META}>Phase 2 — shows alert for now</span>
                 </div>
               </div>
 
               {/* General settings */}
               {timezone && (
-                <div className="glass overflow-hidden rounded-[18px]">
-                  <div className="border-b border-lilac-50/[0.07] px-5 py-4">
-                    <h2 className="text-sm font-semibold text-lilac-50">General</h2>
+                <div className="surface">
+                  <div className="border-b border-line px-5 py-4">
+                    <h2 className={H2}>General</h2>
                   </div>
-                  <div className="px-5 pt-1.5 pb-3.5">
-                    <dl className="text-[13.5px]">
+                  <div className="px-5 pt-1 pb-3">
+                    <dl className="text-[16px]">
                       <div className={DEF_ROW}>
-                        <dt className="text-lilac-50/50">Timezone</dt>
-                        <dd className="font-semibold text-lilac-50">{timezone}</dd>
+                        <dt className="text-mist-500">Timezone</dt>
+                        <dd className="text-mist-50">{timezone}</dd>
                       </div>
                       <div className={LAST_DEF_ROW}>
-                        <dt className="text-lilac-50/50">User ID</dt>
-                        <dd className="text-lilac-50/72">{USER_ID}</dd>
+                        <dt className="text-mist-500">User ID</dt>
+                        <dd className="text-mist-200">{USER_ID}</dd>
                       </div>
                     </dl>
                   </div>

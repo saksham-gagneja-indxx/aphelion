@@ -20,7 +20,9 @@
  *   is simply unreachable.
  */
 
-/** Rose error banner — backend unreachable or endpoint failure. */
+import { BANNER_DANGER, BANNER_QUIET } from '../ui'
+
+/** Error banner — backend unreachable or endpoint failure. */
 export function QueryError({
   title,
   message,
@@ -29,9 +31,9 @@ export function QueryError({
   message?: string
 }) {
   return (
-    <div className="rounded-xl border border-status-failed/[0.26] bg-status-failed/[0.09] px-[15px] py-[13px]">
-      <p className="text-[13.5px] font-semibold text-[#FDA4AF]">{title}</p>
-      {message && <p className="mt-[3px] text-[13px] text-[#FDA4AF]/80">{message}</p>}
+    <div className={BANNER_DANGER}>
+      <p className="text-[16px] text-danger-soft">{title}</p>
+      {message && <p className="mt-1 text-[15px] text-danger-soft/70">{message}</p>}
     </div>
   )
 }
@@ -39,13 +41,14 @@ export function QueryError({
 /** Loading / pending indicator. */
 export function QueryPending({ label = 'Loading…' }: { label?: string }) {
   return (
-    <div className="rounded-xl border border-lilac-50/[0.08] bg-lilac-50/[0.03] p-5 text-center text-[13.5px] text-lilac-50/45">
-      {label}
-    </div>
+    <div className="surface px-4 py-8 text-center text-[16px] text-mist-500">{label}</div>
   )
 }
 
-/** Amber empty-state banner — only render when isSuccess is true. */
+/**
+ * Empty state — only render when isSuccess is true. Violet-edged rather than
+ * amber: nothing is wrong here, there is simply nothing yet.
+ */
 export function QueryEmpty({
   title,
   message,
@@ -54,9 +57,9 @@ export function QueryEmpty({
   message?: string
 }) {
   return (
-    <div className="rounded-xl border border-status-cancelled/[0.24] bg-status-cancelled/[0.08] p-[18px] text-center">
-      <p className="text-[13.5px] font-semibold text-[#FCD34D]">{title}</p>
-      {message && <p className="mt-[3px] text-[13px] text-[#FCD34D]/[0.78]">{message}</p>}
+    <div className={`${BANNER_QUIET} border-l-2 border-l-violet-500 py-6 text-center`}>
+      <p className="text-[16px] text-mist-50">{title}</p>
+      {message && <p className="mt-1 text-[15px] text-mist-500">{message}</p>}
     </div>
   )
 }
