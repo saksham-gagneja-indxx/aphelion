@@ -12,6 +12,20 @@ if (typeof window !== 'undefined' && window.location.hash.includes('token=')) {
   }
 }
 
+/**
+ * Backend origin. Empty string means same-origin (dev proxy / same-host deploy).
+ * Set VITE_API_URL when the frontend and backend are on different origins
+ * (e.g. frontend on Vercel, backend on Render).
+ */
+export const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
+function resolveUrl(input: RequestInfo | URL): RequestInfo | URL {
+  if (typeof input === 'string' && input.startsWith('/')) {
+    return `${API_BASE}${input}`
+  }
+  return input
+}
+
 export interface User {
   id: number
   name: string
@@ -38,7 +52,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const res = await fetch(input, { ...init, headers })
+  const res = await fetch(resolveUrl(input), { ...init, headers })
 
   if (res.status === 401) {
     localStorage.removeItem('smm.session')
@@ -68,5 +82,20 @@ export async function logout(): Promise<{ ok: boolean }> {
     // We still clear the token on 401, which apiFetch does, but if it fails otherwise we throw
     throw await toError(res)
   }
+  return res.json()
+}
+
+export interface LinkedInStatus {
+  app_configured: boolean
+  connected: boolean
+  person_urn: string | null
+  email: string | null
+  token_expires_at: string | null
+  token_expired: boolean
+}
+
+export async function getLinkedInStatus(userId: number): Promise<LinkedInStatus> {
+  const res = await apiFetch(`/api/auth/linkedin/status?user_id=${userId}`)
+  if (!res.ok) throw await toError(res)
   return res.json()
 }

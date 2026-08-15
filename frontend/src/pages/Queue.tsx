@@ -109,6 +109,9 @@ function PostCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <StatusPill status={post.status} />
+            <span className="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 capitalize border border-slate-200 shadow-sm">
+              {post.platform}
+            </span>
             {post.video_duration != null && (
               <span className="text-xs text-slate-400">{post.video_duration.toFixed(1)}s</span>
             )}

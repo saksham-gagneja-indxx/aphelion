@@ -9,6 +9,8 @@ const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
   pending_approval: { text: 'Your account is awaiting approval.', type: 'info' },
 }
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 export default function Login() {
   const [msg, setMsg] = useState<{ text: string; type: 'error' | 'info' } | null>(null)
 
@@ -51,7 +53,7 @@ export default function Login() {
           <button
             type="button"
             onClick={() => {
-              window.location.href = '/api/auth/linkedin/login'
+              window.location.href = `${API_BASE}/api/auth/linkedin/login`
             }}
             className="flex w-full items-center justify-center gap-3 rounded-md bg-[#0a66c2] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#004182] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0a66c2] transition"
           >

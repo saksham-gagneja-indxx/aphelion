@@ -1,5 +1,5 @@
 import type { AnalyticsSummary, ApiError, ApiStatus, HealthStatus, UploadResponse, UserInfo } from './types'
-import { apiFetch } from './auth'
+import { apiFetch, API_BASE } from './auth'
 
 /**
  * Storage key for the session token.
@@ -80,7 +80,7 @@ export function uploadReel({
     form.append('file', file)
 
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/upload')
+    xhr.open('POST', `${API_BASE}/api/upload`)
 
     // Must be set AFTER open() and BEFORE send(). Without it the upload is
     // anonymous and the API rejects it with 401 - which presents as a stalled

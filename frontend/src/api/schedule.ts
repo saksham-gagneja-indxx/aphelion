@@ -57,7 +57,7 @@ export interface ScheduleResponse {
   post: Post
 }
 
-import { apiFetch } from './auth'
+import { apiFetch, API_BASE } from './auth'
 
 async function toError(res: Response): Promise<Error> {
   try {
@@ -147,4 +147,4 @@ export const deletePublished = (postId: number) =>
 
 /** Reels are stored on the server; thumbnails are served through the API. */
 export const thumbnailUrl = (userId: number, filename: string) =>
-  `/api/users/${userId}/reels/${encodeURIComponent(filename)}/thumbnail`
+  `${API_BASE}/api/users/${userId}/reels/${encodeURIComponent(filename)}/thumbnail`
