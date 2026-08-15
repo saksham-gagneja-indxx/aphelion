@@ -15,7 +15,7 @@ from backend.core.captions import (
     suggest_captions,
     unavailable_reason,
 )
-from backend.core.reel_manager import get_reel_manager
+from backend.core.storage import get_media_store
 from backend.models.user import User
 from backend.utils.database import get_session
 from backend.utils.logger import get_logger
@@ -38,15 +38,8 @@ def _resolve_thumbnail(user_id: int, reel_filename: str):
     if not reel_filename:
         return None
 
-    reel_manager = get_reel_manager()
-    user_folder = (reel_manager.reels_folder / str(user_id)).resolve()
-    try:
-        candidate = (user_folder / reel_filename).resolve()
-    except (OSError, ValueError):
-        return None
-
-    if not candidate.is_relative_to(user_folder):
-        logger.warning(f"Rejected out-of-folder reel filename: {reel_filename!r}")
+    candidate = get_media_store().resolve(user_id, reel_filename)
+    if candidate is None:
         return None
 
     thumbnail = candidate.with_suffix(".jpg")

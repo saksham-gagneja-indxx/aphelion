@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # ============ FILE UPLOAD SETTINGS ============
     upload_folder: str = Field(default="data/uploads", alias="UPLOAD_FOLDER")
     reels_folder: str = Field(default="data/reels", alias="REELS_FOLDER")
+    # Where reels actually live. "local" is disk under reels_folder; "object"
+    # selects ObjectMediaStore, which is a documented stub until someone picks
+    # an SDK. See backend/core/storage.py.
+    media_backend: str = Field(default="local", alias="MEDIA_BACKEND")
+    media_bucket: str = Field(default="", alias="MEDIA_BUCKET")
     max_upload_size: int = Field(default=500 * 1024 * 1024, alias="MAX_UPLOAD_SIZE")  # 500MB
     allowed_video_extensions: list = Field(
         default=["mp4", "mov", "avi", "mkv", "webm"],

@@ -16,6 +16,7 @@ from backend.utils.config import get_settings
 from backend.utils.security import current_user, require_user_access
 from backend.core.agent import get_agent, clear_agent
 from backend.core.reel_manager import get_reel_manager
+from backend.core.storage import get_media_store
 from backend.core.scheduler import get_scheduler
 from backend.core.analytics_engine import get_analytics_engine
 from backend.models.user import User
@@ -613,13 +614,10 @@ def delete_reel(user_id, filename):
         return denied
 
     try:
-        reel_manager = get_reel_manager()
-        user_folder = (reel_manager.reels_folder / str(user_id)).resolve()
-
-        # Same guard as the thumbnail route: resolve, then confirm the result
-        # is still inside this user's folder so a crafted name cannot walk out.
-        candidate = (user_folder / filename).resolve()
-        if not candidate.is_relative_to(user_folder):
+        # Containment is the media store's job now - one implementation
+        # instead of the same four-line check copied to each call site.
+        candidate = get_media_store().resolve(user_id, filename)
+        if candidate is None:
             return jsonify({"error": "Invalid filename"}), 400
 
         if not candidate.exists():
@@ -670,13 +668,8 @@ def get_reel_thumbnail(user_id, filename):
         return denied
 
     try:
-        reel_manager = get_reel_manager()
-        user_folder = (reel_manager.reels_folder / str(user_id)).resolve()
-
-        # Resolve and confirm the result stays inside the user's own folder,
-        # so a crafted filename can't walk out of it.
-        candidate = (user_folder / filename).resolve()
-        if not candidate.is_relative_to(user_folder):
+        candidate = get_media_store().resolve(user_id, filename)
+        if candidate is None:
             return jsonify({"error": "Invalid filename"}), 400
 
         thumbnail = candidate.with_suffix(".jpg")

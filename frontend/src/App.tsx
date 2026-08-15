@@ -89,43 +89,42 @@ function UserMenu({ user }: { user: User }) {
 
   const connected = user.linkedin_connected
 
+  /* The ring around the avatar carries connection state now — a glanceable
+     dot beats a sentence, and it frees the header on narrow screens where the
+     text was hidden anyway. Green and red are the two colours outside the
+     violet/white/black palette: they are the one convention nobody has to be
+     taught, and the meaning is spelled out in the menu below and in the
+     screen-reader label, so the colour is never the only carrier. */
+  const ringClass = connected ? 'ring-online' : 'ring-danger'
+
   return (
     <div className="flex items-center gap-4">
-      {/* Connection state reads in violet or grey — the status palette is
-          reserved for posts, and this is not one. Hidden on narrow screens,
-          where it is repeated inside the menu instead. */}
-      <span
-        className={`hidden items-center gap-2 text-[14px] whitespace-nowrap md:inline-flex ${
-          connected ? 'text-mist-200' : 'text-mist-500'
-        }`}
-      >
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-violet-500' : 'bg-mist-500'}`}
-        />
-        {connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
-      </span>
-
       <div ref={menuRef} className="relative">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label="Account menu"
+          aria-label={`Account menu — LinkedIn ${connected ? 'connected' : 'not connected'}`}
           /* min-h-11: a 44px target, below which taps start missing. */
           className="flex min-h-11 items-center gap-2.5 pl-1"
         >
-          {user.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt=""
-              className="h-7 w-7 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-          )}
+          <span
+            title={connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
+            className={`inline-flex shrink-0 rounded-full ring-2 ring-offset-2 ring-offset-ink-950 ${ringClass}`}
+          >
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt=""
+                className="h-7 w-7 rounded-full object-cover"
+              />
+            ) : (
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
+                {user.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </span>
           <span className="hidden max-w-[140px] truncate text-[15px] text-mist-200 sm:inline">
             {user.name}
           </span>
@@ -156,13 +155,15 @@ function UserMenu({ user }: { user: User }) {
               {user.email && (
                 <p className="mt-0.5 truncate text-[13px] text-mist-500">{user.email}</p>
               )}
+              {/* The words behind the ring. Same two colours, so the menu
+                  teaches what the avatar is signalling. */}
               <span
                 className={`mt-2 inline-flex items-center gap-2 text-[13px] ${
-                  connected ? 'text-violet-300' : 'text-mist-500'
+                  connected ? 'text-online' : 'text-danger-soft'
                 }`}
               >
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-violet-500' : 'bg-mist-500'}`}
+                  className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-online' : 'bg-danger'}`}
                 />
                 {connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
               </span>
