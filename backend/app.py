@@ -16,6 +16,7 @@ from backend.utils.config import (
     get_settings,
     validate_settings,
     instagram_configured,
+    linkedin_configured,
     is_placeholder,
 )
 from backend.utils.logger import setup_logging, get_logger
@@ -63,7 +64,9 @@ def create_app():
 
     # Register blueprints
     from backend.api.routes import api_bp
+    from backend.api.auth_routes import auth_bp
     app.register_blueprint(api_bp)
+    app.register_blueprint(auth_bp)
 
     # Health check endpoint
     @app.route("/health", methods=["GET"])
@@ -103,6 +106,12 @@ def create_app():
             # React Settings page keys off this to show connection state.
             "instagram_configured": instagram_configured(),
             "claude_configured": not is_placeholder(settings.claude_api_key),
+            # Whether the OAuth *app* is set up. Whether any member has
+            # authorized it is per-user: /api/auth/linkedin/status.
+            "linkedin_configured": linkedin_configured(),
+            # Instagram publishing stays off until Meta App Review completes;
+            # the UI uses this to avoid offering a platform that cannot work.
+            "publishing_enabled": {"linkedin": True, "instagram": False},
         }), 200
 
     # Error handlers

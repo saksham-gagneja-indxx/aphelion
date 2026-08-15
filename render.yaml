@@ -1,0 +1,69 @@
+# Render deployment for the Social Media Manager backend.
+#
+# Why this exists: LinkedIn's API host (api.linkedin.com) is unreachable from
+# the development machine because local endpoint-protection software
+# intercepts TLS for that host. Running the backend on Render means the
+# LinkedIn calls originate from Render's network instead.
+#
+# Free-tier limitations that are deliberately accepted here:
+#   * The service sleeps after ~15 minutes idle, so APScheduler jobs will NOT
+#     fire reliably. Scheduling needs a paid instance (or an external pinger).
+#     Publish-now works fine, which is what this deployment is for.
+#   * The filesystem is ephemeral: uploaded videos and the SQLite database are
+#     lost on every restart and redeploy. Acceptable for validation, not for
+#     production - that needs a Render Postgres instance and object storage.
+#   * ffmpeg/ffprobe are not installed, so duration validation is skipped.
+#     ReelManager and the publishers already degrade gracefully.
+
+services:
+  - type: web
+    name: social-media-manager-api
+    runtime: python
+    plan: free
+    region: singapore  # closest to Asia/Kolkata, keeps latency sane
+    buildCommand: pip install -r requirements.txt
+    # IMPORTANT: exactly one worker. APScheduler runs in-process, so multiple
+    # gunicorn workers would each start their own scheduler and fire every
+    # scheduled post once per worker.
+    startCommand: gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --workers 1 --timeout 180
+    healthCheckPath: /health
+
+    envVars:
+      # ---- secrets: set these in the Render dashboard, never in git ----
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
+
+      # Must match an Authorized redirect URL in the LinkedIn app exactly.
+      # Fill in with the real onrender.com hostname once it is assigned.
+      - key: LINKEDIN_REDIRECT_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      # Signs the Flask session that carries the OAuth `state` value. Generated
+      # once by Render and kept stable - regenerating it mid-flow would
+      # invalidate in-flight callbacks.
+      - key: SECRET_KEY
+        generateValue: true
+
+      - key: LINKEDIN_API_VERSION
+        value: "202607"
+      - key: FLASK_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+
+      # Instagram is scaffolded and disabled; these satisfy config validation
+      # without implying a working integration.
+      - key: INSTAGRAM_USERNAME
+        value: your_instagram_username
+      - key: INSTAGRAM_PASSWORD
+        value: your_instagram_password
+      - key: CLAUDE_API_KEY
+        value: sk-ant-placeholder-not-used-in-v1

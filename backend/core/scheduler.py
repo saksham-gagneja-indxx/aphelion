@@ -170,66 +170,88 @@ class SmartScheduler:
             return None
 
     def _post_job_callback(self, user_id: int, post_id: int):
-        """Callback function for posting jobs"""
+        """Publish a scheduled post when its trigger fires.
+
+        Runs on an APScheduler worker thread with no request context, so every
+        failure has to be recorded on the Post row - there is nobody to return
+        an error to. The post must never be left in `scheduled` after this
+        returns, or the UI will show it as pending forever.
+
+        Platform work is delegated to a Publisher; this method knows nothing
+        about LinkedIn or Instagram beyond the string on the post.
+        """
+        db = None
         try:
             logger.info(f"🔔 Post job triggered: user_id={user_id}, post_id={post_id}")
 
             db = get_session()
 
-            # Get user and post
             user = db.query(User).filter(User.id == user_id).first()
             post = db.query(Post).filter(Post.id == post_id).first()
 
             if not user or not post:
-                logger.error(f"User or post not found: user_id={user_id}, post_id={post_id}")
+                logger.error(
+                    f"User or post not found: user_id={user_id}, post_id={post_id}"
+                )
                 return
 
-            # Import here to avoid circular imports
-            from backend.core.agent import get_agent
+            # Imported here to avoid a circular import at module load.
+            from backend.core.publishers import UnknownPlatformError, get_publisher
 
-            agent = get_agent(user, db)
+            platform = post.platform or "linkedin"
+            try:
+                publisher = get_publisher(user, platform)
+            except UnknownPlatformError as e:
+                post.mark_as_failed(str(e))
+                db.commit()
+                return
 
-            # Authenticate if needed
-            if not agent.is_connected():
-                logger.info(f"Authenticating user: {user.instagram_username}")
-                if not agent.authenticate(user.instagram_username, None):
-                    # Try with password from environment would need to be stored securely
-                    logger.error("Could not authenticate")
-                    post.mark_as_failed("Authentication failed")
-                    db.commit()
-                    return
+            if not publisher.is_connected():
+                status = publisher.connection_status()
+                reason = status.get("reason") or (
+                    f"{platform} is not connected. Authorize it from Settings."
+                )
+                logger.error(f"❌ Cannot publish post {post_id}: {reason}")
+                post.mark_as_failed(reason)
+                db.commit()
+                return
 
-            # Post the reel
-            logger.info(f"📤 Posting reel: {post.video_path}")
-            result = agent.post_reel(
-                post.video_path,
+            logger.info(f"📤 Publishing post {post_id} to {platform}: {post.video_path}")
+            result = publisher.publish(
+                video_path=Path(post.video_path),
                 caption=post.caption or "",
-                thumbnail_path=post.thumbnail_path,
-                post_id=post_id
+                thumbnail_path=Path(post.thumbnail_path) if post.thumbnail_path else None,
             )
 
-            if result:
-                logger.info(f"✅ Post successful: {result}")
-            else:
-                logger.error(f"❌ Post failed")
-                post.mark_as_failed("Posting failed")
+            if result.success:
+                post.mark_as_posted(result.platform_post_id, platform=platform)
+                post.video_url = result.url
                 db.commit()
+                logger.info(f"✅ Post {post_id} published: {result.url}")
+            else:
+                post.mark_as_failed(result.error or "Publishing failed")
+                db.commit()
+                logger.error(f"❌ Post {post_id} failed: {result.error}")
 
         except Exception as e:
-            logger.error(f"❌ Post job error: {str(e)}")
+            # Last resort. A publisher returning a result is the normal path;
+            # reaching here means something genuinely unexpected broke.
+            logger.exception(f"❌ Unhandled error in post job {post_id}")
             try:
-                db = get_session()
+                if db is None:
+                    db = get_session()
                 post = db.query(Post).filter(Post.id == post_id).first()
                 if post:
-                    post.mark_as_failed(str(e))
+                    post.mark_as_failed(f"Unexpected error: {e}")
                     db.commit()
-            except:
-                pass
+            except Exception:
+                logger.exception(f"Could not record failure for post {post_id}")
         finally:
-            try:
-                db.close()
-            except:
-                pass
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass
 
     def _add_post_job(self, post: Post):
         """Add a post job to the scheduler"""

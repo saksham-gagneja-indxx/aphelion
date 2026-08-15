@@ -33,9 +33,27 @@ class Settings(BaseSettings):
     instagram_username: str = Field(alias="INSTAGRAM_USERNAME")
     instagram_password: str = Field(alias="INSTAGRAM_PASSWORD")
 
-    # ============ LINKEDIN SETTINGS (Phase 3) ============
-    linkedin_email: Optional[str] = Field(default=None, alias="LINKEDIN_EMAIL")
-    linkedin_password: Optional[str] = Field(default=None, alias="LINKEDIN_PASSWORD")
+    # ============ LINKEDIN SETTINGS ============
+    # OAuth 2.0 only. There is deliberately no LINKEDIN_PASSWORD: publishing
+    # uses the `w_member_social` scope obtained via the member's own consent,
+    # and password-based automation violates LinkedIn's User Agreement.
+    linkedin_client_id: Optional[str] = Field(default=None, alias="LINKEDIN_CLIENT_ID")
+    linkedin_client_secret: Optional[str] = Field(
+        default=None, alias="LINKEDIN_CLIENT_SECRET"
+    )
+    linkedin_redirect_uri: str = Field(
+        default="http://localhost:5000/api/auth/linkedin/callback",
+        alias="LINKEDIN_REDIRECT_URI",
+    )
+    # LinkedIn-Version header, YYYYMM. Versions sunset on a rolling schedule,
+    # so this is configurable rather than hardcoded at a call site.
+    linkedin_api_version: str = Field(default="202607", alias="LINKEDIN_API_VERSION")
+
+    # ============ FRONTEND ============
+    # Where the OAuth callback sends the browser once the token is stored.
+    # Configurable because it differs per environment: the Vite dev server
+    # locally, the deployed SPA in production.
+    frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
 
     # ============ TIMEZONE SETTINGS ============
     timezone: str = Field(default="Asia/Kolkata", alias="TIMEZONE")
@@ -111,6 +129,19 @@ def instagram_configured() -> bool:
     return not (
         is_placeholder(settings.instagram_username)
         or is_placeholder(settings.instagram_password)
+    )
+
+
+def linkedin_configured() -> bool:
+    """True when the LinkedIn OAuth app is configured.
+
+    This reports whether *the app* can start an OAuth flow - not whether any
+    member has authorized it. Per-user connection state lives on the User row.
+    """
+    settings = get_settings()
+    return not (
+        is_placeholder(settings.linkedin_client_id)
+        or is_placeholder(settings.linkedin_client_secret)
     )
 
 

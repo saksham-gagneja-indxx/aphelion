@@ -4,7 +4,8 @@
 
 ### Step 1: Clone & Setup
 ```bash
-cd /workspace/social-media-automation
+git clone https://github.com/saksham-gagneja-indxx/social-media-manager.git
+cd social-media-manager
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -13,16 +14,20 @@ pip install -r requirements.txt
 ### Step 2: Configure
 ```bash
 cp .env.example .env
-# Edit .env with your credentials:
-# - CLAUDE_API_KEY
-# - INSTAGRAM_USERNAME & PASSWORD
-# - LINKEDIN_EMAIL & PASSWORD
+# Edit .env with your local TIMEZONE.
+# Instagram/Claude credentials can be added but are NOT currently wired to posting.
 ```
 
 ### Step 3: Run
 ```bash
-python backend/app.py
-# Visit http://localhost:5000
+# Terminal 1: Backend
+python -m backend.app
+
+# Terminal 2: Frontend
+cd frontend
+npm install
+npm run dev
+# Visit http://localhost:5173
 ```
 
 ---
@@ -210,9 +215,9 @@ deactivate
 
 ### Start the Server
 ```bash
-cd /workspace/social-media-automation
+cd social-media-manager
 source venv/bin/activate
-python backend/app.py
+python -m backend.app
 ```
 
 ### Expected Output
@@ -224,7 +229,12 @@ python backend/app.py
 
 ### Access Dashboard
 ```
-http://localhost:5000
+The React frontend handles the dashboard. Start it in a second terminal:
+cd frontend
+npm install
+npm run dev
+
+Then visit: http://localhost:5173
 ```
 
 ---
@@ -357,11 +367,10 @@ alembic revision --autogenerate -m "description"
 ### Daily Workflow
 ```
 1. Activate venv
-2. Run app: python backend/app.py
-3. Make changes
-4. Test changes
-5. Commit changes
-6. Document changes
+2. Run backend: python -m backend.app
+3. Run frontend: cd frontend && npm run dev
+4. Make changes
+5. Test changes
 ```
 
 ### Before Committing
@@ -383,14 +392,15 @@ git commit -m "description"
 
 ## 📋 Checklist for First Run
 
-- [ ] Python 3.9+ installed
+- [ ] Python 3.12+ installed
+- [ ] Node.js 20+ and npm installed
 - [ ] Virtual environment created
-- [ ] Dependencies installed
-- [ ] .env configured with API keys
+- [ ] Dependencies installed (Python and Node)
+- [ ] .env configured with timezone (Instagram credentials can be skipped for now)
 - [ ] Database initialized
-- [ ] Flask app running on localhost:5000
+- [ ] Flask backend running on localhost:5000
+- [ ] Vite frontend running on localhost:5173
 - [ ] Dashboard accessible in browser
-- [ ] Can login with Instagram credentials
 
 ---
 
@@ -416,8 +426,12 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run app
-python backend/app.py
+# Run backend
+python -m backend.app
+
+# Run frontend
+cd frontend
+npm run dev
 
 # Run tests
 pytest tests/ -v

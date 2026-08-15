@@ -62,3 +62,8 @@ cryptography==41.0.7
 PyJWT==2.8.1
 click==8.1.7
 colorama==0.4.6
+
+# ============ PRODUCTION SERVER ============
+# Render (and any real host) runs the app under a WSGI server rather than
+# Flask's development server. Pinned so deploys are reproducible.
+gunicorn==21.2.0

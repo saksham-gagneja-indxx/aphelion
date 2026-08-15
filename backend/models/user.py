@@ -24,10 +24,17 @@ class User(Base):
     instagram_user_id = Column(String(255), nullable=True)  # Instagram's internal user ID
     instagram_connected = Column(Boolean, default=False)
 
-    # LinkedIn credentials and info (Phase 3)
+    # LinkedIn - OAuth 2.0 only, no password is ever stored.
     linkedin_email = Column(String(255), nullable=True)
     linkedin_session_id = Column(String(500), nullable=True)
     linkedin_connected = Column(Boolean, default=False)
+    # Author URN used on every publish, e.g. "urn:li:person:abc123".
+    linkedin_person_urn = Column(String(255), nullable=True)
+    linkedin_access_token = Column(String(2000), nullable=True)
+    linkedin_refresh_token = Column(String(2000), nullable=True)
+    # Access tokens last ~60 days, refresh tokens ~365. Stored so the UI can
+    # warn before expiry instead of discovering it when a scheduled post fires.
+    linkedin_token_expires_at = Column(DateTime, nullable=True)
 
     # Account settings
     timezone = Column(String(50), default="Asia/Kolkata")
@@ -86,6 +93,40 @@ class User(Base):
         self.linkedin_connected = True
         self.linkedin_session_id = session_id
         self.linkedin_connected_at = utcnow()
+
+    def store_linkedin_token(
+        self,
+        access_token: str,
+        person_urn: str,
+        expires_at=None,
+        refresh_token: str = None,
+    ):
+        """Record an OAuth grant from the LinkedIn callback."""
+        self.linkedin_access_token = access_token
+        self.linkedin_person_urn = person_urn
+        self.linkedin_token_expires_at = expires_at
+        if refresh_token:
+            self.linkedin_refresh_token = refresh_token
+        self.linkedin_connected = True
+        self.linkedin_connected_at = utcnow()
+        self.updated_at = utcnow()
+
+    def clear_linkedin_token(self):
+        """Revoke locally - used when the member disconnects."""
+        self.linkedin_access_token = None
+        self.linkedin_refresh_token = None
+        self.linkedin_person_urn = None
+        self.linkedin_token_expires_at = None
+        self.linkedin_connected = False
+        self.updated_at = utcnow()
+
+    def linkedin_token_valid(self) -> bool:
+        """True when a token exists and has not passed its expiry."""
+        if not (self.linkedin_access_token and self.linkedin_person_urn):
+            return False
+        if self.linkedin_token_expires_at is None:
+            return True
+        return self.linkedin_token_expires_at > utcnow()
 
     def update_last_login(self):
         """Update last login timestamp"""

@@ -69,6 +69,12 @@ class Database:
             # Create all tables
             Base.metadata.create_all(bind=self.engine)
 
+            # create_all only creates MISSING TABLES - it never alters an
+            # existing one. Columns added to a model after a table already
+            # exists are silently absent until something queries them and the
+            # request dies with "no such column". Reconcile them here.
+            self._add_missing_columns()
+
             created = inspect(self.engine).get_table_names()
             logger.info(f"✅ Database initialized successfully (tables: {', '.join(created) or 'none'})")
             self._initialized = True
@@ -76,6 +82,47 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {str(e)}")
             raise
+
+    def _add_missing_columns(self):
+        """Add model columns that are missing from existing tables.
+
+        A deliberately minimal stand-in for Alembic: it only ever ADDs nullable
+        columns, and never drops, renames, or retypes anything. That covers the
+        additive schema changes this project makes while being incapable of
+        destroying data if it misfires. Anything more involved - a type change,
+        a NOT NULL backfill - needs a real migration tool.
+        """
+        inspector = inspect(self.engine)
+        existing_tables = set(inspector.get_table_names())
+
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # create_all just made it; nothing to reconcile.
+
+            present = {col["name"] for col in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in present:
+                    continue
+
+                if not column.nullable:
+                    # Adding a NOT NULL column to a populated table cannot
+                    # succeed without a default. Surface it rather than
+                    # crashing the whole boot on an ALTER we can't perform.
+                    logger.error(
+                        f"Cannot auto-add NOT NULL column "
+                        f"{table.name}.{column.name}; a migration is required"
+                    )
+                    continue
+
+                ddl_type = column.type.compile(dialect=self.engine.dialect)
+                with self.engine.begin() as connection:
+                    connection.execute(
+                        text(
+                            f'ALTER TABLE {table.name} '
+                            f'ADD COLUMN "{column.name}" {ddl_type}'
+                        )
+                    )
+                logger.info(f"➕ Added missing column {table.name}.{column.name}")
 
     def get_session(self) -> Session:
         """Get a new database session"""
