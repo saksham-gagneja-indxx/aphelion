@@ -94,6 +94,8 @@ export const createPost = (input: {
   userId: number
   videoPath: string
   caption?: string
+  /** Whether the caption came from caption assist rather than being typed. */
+  aiGeneratedCaption?: boolean
   /** Explicit so a backend default can never silently pick a disabled platform. */
   platform?: 'linkedin' | 'instagram'
 }) =>
@@ -103,6 +105,7 @@ export const createPost = (input: {
       user_id: input.userId,
       video_path: input.videoPath,
       caption: input.caption || null,
+      ai_generated_caption: input.aiGeneratedCaption ?? false,
       platform: input.platform ?? 'linkedin',
     }),
   )

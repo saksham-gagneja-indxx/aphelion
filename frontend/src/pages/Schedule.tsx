@@ -10,6 +10,7 @@ import {
 } from '../api/schedule'
 import { formatBytes } from '../api/validation'
 import type { Reel } from '../api/types'
+import CaptionAssist from '../components/CaptionAssist'
 import {
   BANNER_DANGER,
   BANNER_OK,
@@ -55,6 +56,10 @@ export default function Schedule() {
 
   const [selected, setSelected] = useState<Reel | null>(null)
   const [caption, setCaption] = useState('')
+  // Recorded on the post so the Queue and audit trail can tell a drafted
+  // caption from a typed one. Editing after picking clears the flag - at that
+  // point it is the operator's caption, not the model's.
+  const [captionFromAssist, setCaptionFromAssist] = useState(false)
   const [when, setWhen] = useState(() =>
     toLocalInputValue(new Date(Date.now() + 15 * 60 * 1000)),
   )
@@ -82,6 +87,7 @@ export default function Schedule() {
         userId: USER_ID,
         videoPath: selected.path,
         caption: caption.trim() || undefined,
+        aiGeneratedCaption: captionFromAssist,
       })
       return schedulePost(post.id, when)
     },
@@ -90,6 +96,7 @@ export default function Schedule() {
       setError(null)
       setSelected(null)
       setCaption('')
+      setCaptionFromAssist(false)
       queryClient.invalidateQueries({ queryKey: ['scheduledJobs', USER_ID] })
     },
     onError: (err: Error) => {
@@ -247,10 +254,22 @@ export default function Schedule() {
         <textarea
           id="caption"
           value={caption}
-          onChange={(e) => setCaption(e.target.value)}
+          onChange={(e) => {
+            setCaption(e.target.value)
+            setCaptionFromAssist(false)
+          }}
           rows={3}
           placeholder="Optional caption for the reel"
           className={`${FIELD} mt-2 min-h-[96px]`}
+        />
+
+        <CaptionAssist
+          reelFilename={selected?.filename}
+          durationSeconds={selected?.duration_seconds}
+          onPick={(text) => {
+            setCaption(text)
+            setCaptionFromAssist(true)
+          }}
         />
 
         <label className={`${LABEL} mt-6`} htmlFor="when">

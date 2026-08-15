@@ -38,6 +38,12 @@ APScheduler==3.10.4
 pytz==2023.3
 python-dateutil==2.8.2
 
+# ============ AI ============
+# Caption assist (backend/core/captions.py). Imported lazily so a deployment
+# without it degrades to a clear "not installed" message rather than failing
+# to boot.
+anthropic==0.116.0
+
 # ============ MEDIA ============
 # Pillow is imported by reel_manager. ffmpeg/ffprobe are external binaries and
 # are intentionally NOT required: validation degrades gracefully without them.
