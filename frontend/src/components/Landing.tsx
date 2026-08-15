@@ -15,8 +15,10 @@
  *     api/validation.ts), not the marketing copy's "MP4 only · 3s – 30 min".
  */
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import BoltLogo from './BoltLogo'
-import { linkedInLoginUrl, openBlankTab } from '../api/auth'
+import { getGuestEnabled, linkedInLoginUrl, openBlankTab, signInAsGuest } from '../api/auth'
 import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW } from '../ui'
 
 const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
@@ -28,7 +30,9 @@ const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
   pending_approval: { text: 'Your account is awaiting approval.', type: 'info' },
 }
 
-const DOCS_URL = 'https://github.com/saksham-gagneja-indxx/social-media-manager#readme'
+/** The in-app docs, not the GitHub README: a visitor here has no repository
+ *  access, and the page they need explains how to get an account. */
+const DOCS_PATH = '/docs'
 
 /**
  * Consent happens in a new tab, so this page (and anything typed into it) is
@@ -169,6 +173,31 @@ function ProductPreview() {
 
 export default function Landing() {
   const [msg, setMsg] = useState<{ text: string; type: 'error' | 'info' } | null>(null)
+  const [guestBusy, setGuestBusy] = useState(false)
+  const [guestError, setGuestError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  // Only offered when the server actually allows it, so a deployment with
+  // guests turned off does not show a button that always fails.
+  const { data: guestEnabled } = useQuery({
+    queryKey: ['guest', 'enabled'],
+    queryFn: getGuestEnabled,
+    staleTime: 60_000,
+  })
+
+  const startGuest = async () => {
+    setGuestError(null)
+    setGuestBusy(true)
+    try {
+      await signInAsGuest()
+      // The token is in place; re-running the identity check swaps the landing
+      // page for the app without a reload.
+      await queryClient.invalidateQueries({ queryKey: ['me'] })
+    } catch (err) {
+      setGuestError((err as Error).message)
+      setGuestBusy(false)
+    }
+  }
 
   useEffect(() => {
     // Parse query params for ?linkedin=<status>
@@ -197,14 +226,9 @@ export default function Landing() {
             <a href="#product" className="text-[16px] text-mist-500 hover:text-mist-50">
               Product
             </a>
-            <a
-              href={DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[16px] text-mist-500 hover:text-mist-50"
-            >
+            <Link to={DOCS_PATH} className="text-[16px] text-mist-500 hover:text-mist-50">
               Docs
-            </a>
+            </Link>
           </div>
           <div className="flex items-center gap-3">
             <button type="button" onClick={startSignIn} className={BTN_OUTLINE}>
@@ -253,14 +277,15 @@ export default function Landing() {
           </div>
         )}
 
-        {/* Both CTAs start the same OAuth flow — there is no separate signup. */}
+        {/* Sign in starts OAuth — there is no separate signup. Guest is a real
+            account, just a sandboxed one; see the note under the buttons. */}
         <div className="animate-rise mt-10 flex w-full flex-wrap items-center justify-center gap-3 [animation-delay:.3s]">
           <button
             type="button"
             onClick={startSignIn}
             className={`${BTN_PRIMARY} px-8 py-4 text-[18px]`}
           >
-            Start for free
+            Sign in with LinkedIn
             <svg
               className="h-5 w-5"
               viewBox="0 0 24 24"
@@ -273,15 +298,33 @@ export default function Landing() {
               <path d="M5 12h14m-6-6 6 6-6 6" />
             </svg>
           </button>
-          <a
-            href={DOCS_URL}
-            target="_blank"
-            rel="noreferrer"
+          {guestEnabled && (
+            <button
+              type="button"
+              onClick={() => void startGuest()}
+              disabled={guestBusy}
+              className={`${BTN_OUTLINE} px-8 py-4 text-[18px] hover:text-mist-50`}
+            >
+              {guestBusy ? 'Setting up…' : 'Try it as a guest'}
+            </button>
+          )}
+          <Link
+            to={DOCS_PATH}
             className={`${BTN_OUTLINE} px-8 py-4 text-[18px] hover:text-mist-50`}
           >
             Read the docs
-          </a>
+          </Link>
         </div>
+
+        {guestEnabled && (
+          <p className="animate-fade-in mt-5 max-w-[520px] text-center text-[15px] text-mist-500 [animation-delay:.35s]">
+            A guest account lets you upload, caption and schedule. Publishing needs
+            LinkedIn, since that posts to a real profile.
+          </p>
+        )}
+        {guestError && (
+          <p className="mt-4 text-[15px] text-danger-soft">{guestError}</p>
+        )}
 
         {/* Kept in step with api/validation.ts — these are the limits enforced. */}
         <div className={`${EYEBROW} animate-fade-in mt-10 flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-2 text-center [animation-delay:.4s]`}>

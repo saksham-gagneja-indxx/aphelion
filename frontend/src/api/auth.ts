@@ -39,6 +39,8 @@ export interface User {
   name: string
   email: string
   role: 'admin' | 'operator'
+  /** Sandboxed try-it-out account: cannot publish, never an administrator. */
+  is_guest: boolean
   linkedin_connected: boolean
   avatar_url: string | null
 }
@@ -121,6 +123,31 @@ export interface SetupState {
   complete: boolean
   redirect_uri: string
   is_admin: boolean
+}
+
+/** Whether this server offers guest accounts. */
+export async function getGuestEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/guest/status`)
+    if (!res.ok) return false
+    return Boolean((await res.json()).enabled)
+  } catch {
+    // A server that cannot be reached simply does not offer the option.
+    return false
+  }
+}
+
+/**
+ * Create a sandboxed guest account and sign in as it.
+ *
+ * Not a bypass: this returns an ordinary session for an ordinary account that
+ * happens to be barred from publishing and from ever being an administrator.
+ */
+export async function signInAsGuest(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/guest`, { method: 'POST' })
+  if (!res.ok) throw await toError(res)
+  const body = (await res.json()) as { token: string }
+  localStorage.setItem(SESSION_KEY, body.token)
 }
 
 /** What the caller still has to do before they can publish. */

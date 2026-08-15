@@ -5,6 +5,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, type RenderOptions } from '@testing-library/react'
 import { type ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { CurrentUserProvider } from '../current-user'
 import type { User } from '../api/auth'
 
@@ -18,6 +19,7 @@ export const TEST_USER: User = {
   name: 'Test User',
   email: 'test@example.com',
   role: 'operator',
+  is_guest: false,
   linkedin_connected: false,
   avatar_url: null,
 }
@@ -41,14 +43,18 @@ function createTestQueryClient() {
 
 export function renderWithQuery(
   ui: ReactElement,
-  options?: Omit<RenderOptions, 'wrapper'> & { user?: User },
+  options?: Omit<RenderOptions, 'wrapper'> & { user?: User; router?: boolean },
 ) {
-  const { user = TEST_USER, ...renderOptions } = options ?? {}
+  const { user = TEST_USER, router = true, ...renderOptions } = options ?? {}
   const client = createTestQueryClient()
+  // A router by default, because components increasingly use <Link> and
+  // rendering one outside a router throws. Opt out with `router: false` when
+  // the test supplies its own — react-router refuses to nest them.
   function Wrapper({ children }: { children: React.ReactNode }) {
+    const inner = <CurrentUserProvider user={user}>{children}</CurrentUserProvider>
     return (
       <QueryClientProvider client={client}>
-        <CurrentUserProvider user={user}>{children}</CurrentUserProvider>
+        {router ? <MemoryRouter>{inner}</MemoryRouter> : inner}
       </QueryClientProvider>
     )
   }

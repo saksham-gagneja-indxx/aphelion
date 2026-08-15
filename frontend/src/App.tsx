@@ -1,7 +1,13 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { getMe, logout, onSessionChangedInAnotherTab, type User } from './api/auth'
+import {
+  getMe,
+  linkedInLoginUrl,
+  logout,
+  onSessionChangedInAnotherTab,
+  type User,
+} from './api/auth'
 import { getAdminStats } from './api/admin'
 import { CurrentUserProvider } from './current-user'
 import { UndoProvider } from './undo'
@@ -53,6 +59,29 @@ function AuthGate({ children }: { children: React.ReactNode }) {
  * opened by touch at all, which left anyone on a phone with no way to reach
  * sign-out — the menu was the only place it existed.
  */
+/** Chrome for a page readable without an account. */
+function PublicShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative min-h-screen bg-ink-950">
+      <GridBackdrop />
+      <header className="sticky top-0 z-20 border-b border-line bg-ink-950">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-7 py-4">
+          <NavLink to="/" className="flex items-center gap-2.5">
+            <BoltLogo className="text-violet-500" />
+            <span className="font-display text-[16px] font-medium tracking-[-.01em] whitespace-nowrap text-mist-50">
+              Reel Automation
+            </span>
+          </NavLink>
+          <NavLink to="/" className={BTN_OUTLINE}>
+            Sign in
+          </NavLink>
+        </div>
+      </header>
+      <main className="relative z-10 px-7 pt-14 pb-20">{children}</main>
+    </div>
+  )
+}
+
 function UserMenu({ user }: { user: User }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -236,9 +265,16 @@ export default function App() {
     )
   }
 
-  // If 401 Unauthorized, show the landing page — it is also the sign-in gate
+  // If 401 Unauthorized, show the landing page — it is also the sign-in gate.
+  // Docs is exempt: it explains how to get an account, so requiring one to
+  // read it is backwards, and the landing page links straight to it.
   if (isError && error.message === 'Unauthorized') {
-    return <Landing />
+    return (
+      <Routes>
+        <Route path="/docs" element={<PublicShell><Docs /></PublicShell>} />
+        <Route path="*" element={<Landing />} />
+      </Routes>
+    )
   }
 
   // If 403 Forbidden, show awaiting approval
@@ -374,23 +410,44 @@ function Shell({
         </div>
       </header>
 
-      {/* An unconnected account can navigate anywhere, but nothing it does
-          will publish, so the reason follows it around rather than being
-          discoverable only from the page it happens to be on. */}
-      {!user.linkedin_connected && location.pathname !== '/setup' && (
-        <div className="relative z-10 border-b border-violet-500/30 bg-violet-500/[0.07]">
+      {/* An account that cannot publish carries the reason with it, rather
+          than leaving it discoverable only from whichever page it is on.
+          A guest gets a different line: it is not an unfinished setup, it is
+          the deal it signed up to. */}
+      {user.is_guest ? (
+        <div className="relative z-10 border-b border-line bg-ink-900">
           <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-x-4 gap-y-2 px-7 py-3">
-            <p className="text-[15px] text-violet-200">
-              LinkedIn is not connected yet — posts cannot be published.
+            <p className="text-[15px] text-mist-200">
+              You are using a guest account. Everything works except publishing.
             </p>
-            <NavLink
-              to="/setup"
-              className="text-[15px] text-mist-50 underline underline-offset-2 hover:text-violet-200"
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = linkedInLoginUrl()
+              }}
+              className="text-[15px] text-violet-300 underline underline-offset-2 hover:text-violet-200"
             >
-              Finish setup
-            </NavLink>
+              Sign in with LinkedIn to publish
+            </button>
           </div>
         </div>
+      ) : (
+        !user.linkedin_connected &&
+        location.pathname !== '/setup' && (
+          <div className="relative z-10 border-b border-violet-500/30 bg-violet-500/[0.07]">
+            <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-x-4 gap-y-2 px-7 py-3">
+              <p className="text-[15px] text-violet-200">
+                LinkedIn is not connected yet — posts cannot be published.
+              </p>
+              <NavLink
+                to="/setup"
+                className="text-[15px] text-mist-50 underline underline-offset-2 hover:text-violet-200"
+              >
+                Finish setup
+              </NavLink>
+            </div>
+          </div>
+        )
       )}
 
       <main className="relative z-10 px-7 pt-14 pb-20">
@@ -404,7 +461,10 @@ function Shell({
             <Route
               path="/"
               element={
-                <Navigate to={user.linkedin_connected ? '/compose' : '/setup'} replace />
+                <Navigate
+                  to={user.linkedin_connected || user.is_guest ? '/compose' : '/setup'}
+                  replace
+                />
               }
             />
             <Route path="/compose" element={<Compose />} />

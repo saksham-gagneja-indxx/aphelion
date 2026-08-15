@@ -26,6 +26,24 @@ logger = get_logger("social_media_automation.publish")
 publish_bp = Blueprint("publish", __name__, url_prefix="/api/posts")
 
 
+@publish_bp.before_request
+def block_guests():
+    """A guest may not publish or retract.
+
+    Publishing acts on a real LinkedIn profile, and a guest has not proved they
+    own one. Enforced blueprint-wide rather than per route, for the same reason
+    the admin guard is: a route added later is covered by default instead of
+    covered only if someone remembers.
+    """
+    user = current_user()
+    if user is not None and user.is_guest_account():
+        return jsonify({
+            "error": "Guest accounts cannot publish to LinkedIn. "
+                     "Sign in with LinkedIn to post."
+        }), 403
+    return None
+
+
 def _load_owned_post(db, post_id: int):
     """Fetch a post the caller is allowed to act on.
 

@@ -52,6 +52,12 @@ PUBLIC_PATHS = {
     # new accounts are created INACTIVE and cannot use the API until an
     # administrator approves them.
     "/api/auth/linkedin/login",
+    # Guest sign-in. Public for the same reason as the LinkedIn entry point:
+    # it is what an unauthenticated visitor calls to get a session. What it
+    # hands back is an ordinary, sandboxed account - it cannot publish and can
+    # never be an administrator. See backend/api/guest_routes.py.
+    "/api/auth/guest",
+    "/api/auth/guest/status",
 }
 
 # How long a minted authorize URL stays valid. Long enough to click through a
