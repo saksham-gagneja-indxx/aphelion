@@ -1,4 +1,14 @@
 import type { AnalyticsSummary, ApiError, ApiStatus, HealthStatus, UploadResponse, UserInfo } from './types'
+import { apiFetch } from './auth'
+
+/**
+ * Storage key for the session token.
+ *
+ * MUST match the key used in api/auth.ts. Duplicated only because XHR cannot
+ * go through apiFetch (which wraps fetch), and fetch has no upload-progress
+ * events - so the upload path has to read the token itself.
+ */
+const SESSION_KEY = 'smm.session'
 
 /**
  * Extract the backend's error message from a failed response.
@@ -15,8 +25,13 @@ async function toError(res: Response): Promise<Error> {
   return new Error(`Request failed (${res.status} ${res.statusText})`)
 }
 
+/**
+ * All API calls go through apiFetch so the session token is attached. Every
+ * /api/* route requires a bearer token; a plain fetch() here returns 401 and
+ * the caller sees an unexplained failure.
+ */
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path)
+  const res = await apiFetch(path)
   if (!res.ok) throw await toError(res)
   return (await res.json()) as T
 }
@@ -31,7 +46,7 @@ export const getUser = (userId: number) => getJson<UserInfo>(`/api/users/${userI
  * (it sends 200 with { message: "No analytics data available" } instead of the summary shape).
  */
 export async function getAnalytics(userId: number): Promise<AnalyticsSummary | null> {
-  const res = await fetch(`/api/users/${userId}/analytics`)
+  const res = await apiFetch(`/api/users/${userId}/analytics`)
   if (!res.ok) throw await toError(res)
   const body = await res.json()
   // When no analytics exist the backend sends { message: "..." } instead of summary fields.
@@ -66,6 +81,15 @@ export function uploadReel({
 
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/upload')
+
+    // Must be set AFTER open() and BEFORE send(). Without it the upload is
+    // anonymous and the API rejects it with 401 - which presents as a stalled
+    // progress bar rather than an obvious failure, because the request is
+    // refused only once the whole body has been transferred.
+    const token = localStorage.getItem(SESSION_KEY)
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    }
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
