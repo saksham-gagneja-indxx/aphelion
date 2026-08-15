@@ -68,11 +68,11 @@ def create_app():
     # Require an API key on every /api/* route except an explicit allowlist.
     # Registered as a before_request hook rather than per-route decorators so
     # that any endpoint added later is protected by default.
-    from backend.utils.security import api_key_configured, check_api_key
+    from backend.utils.security import api_key_configured, authenticate_request
 
     @app.before_request
-    def enforce_api_key():
-        return check_api_key()
+    def enforce_authentication():
+        return authenticate_request()
 
     if not api_key_configured():
         logger.error(
@@ -93,8 +93,10 @@ def create_app():
     # Register blueprints
     from backend.api.routes import api_bp
     from backend.api.auth_routes import auth_bp
+    from backend.api.admin_routes import admin_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
 
     # Health check endpoint
     @app.route("/health", methods=["GET"])

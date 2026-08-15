@@ -29,6 +29,9 @@ requests==2.34.2
 
 # ============ DATABASE ============
 SQLAlchemy==2.0.52
+# Postgres driver. SQLite is still supported for local development; the engine
+# is selected from DATABASE_URL at runtime.
+psycopg2-binary==2.9.10
 
 # ============ SCHEDULING ============
 APScheduler==3.10.4

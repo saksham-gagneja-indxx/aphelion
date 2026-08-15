@@ -16,6 +16,27 @@ Base = declarative_base()
 logger = get_logger("social_media_automation.database")
 
 
+def _normalize_database_url(url: str) -> str:
+    """Make a provider-supplied URL usable by SQLAlchemy.
+
+    Several hosts hand out `postgres://`, which SQLAlchemy 2.x rejects - it
+    wants the `postgresql://` dialect name. Normalising here means a copied
+    connection string works without anyone having to know that.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://"):]
+    return url
+
+
+def _safe_url(url: str) -> str:
+    """Redact credentials so a connection string can be logged."""
+    if "@" not in url:
+        return url
+    scheme, _, rest = url.partition("://")
+    _, _, host = rest.rpartition("@")
+    return f"{scheme}://***@{host}"
+
+
 class Database:
     """Database connection manager"""
 
@@ -30,9 +51,10 @@ class Database:
             return
 
         settings = get_settings()
-        database_url = settings.database_url
+        database_url = _normalize_database_url(settings.database_url)
 
-        logger.info(f"📦 Initializing database: {database_url}")
+        # Log the backend and host, never the full URL - it carries the password.
+        logger.info(f"📦 Initializing database: {_safe_url(database_url)}")
 
         try:
             # Create engine
@@ -64,7 +86,7 @@ class Database:
             # metadata and silently creates NO tables - every query then fails
             # with "no such table". Imported here (not at module scope)
             # because the models import Base from this module.
-            from backend.models import analytics, post, user  # noqa: F401
+            from backend.models import analytics, audit, post, user  # noqa: F401
 
             # Create all tables
             Base.metadata.create_all(bind=self.engine)

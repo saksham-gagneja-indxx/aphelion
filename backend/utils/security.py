@@ -31,21 +31,27 @@ import time
 from functools import wraps
 from typing import Optional, Tuple
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 from backend.utils.config import get_settings
 from backend.utils.logger import get_logger
 
 logger = get_logger("social_media_automation.security")
 
-# Paths reachable without an API key. Keep this list short and justified.
+# Paths reachable without credentials. Keep this list short and justified -
+# every entry is an endpoint the whole internet can reach.
 PUBLIC_PATHS = {
     # Render's health probe cannot send custom headers.
     "/health",
     # LinkedIn redirects the member's browser here after consent. It cannot
-    # carry our bearer token. It is protected instead by the signed `state`
+    # carry a bearer token. It is protected instead by the signed `state`
     # parameter, which must verify before anything is written.
     "/api/auth/linkedin/callback",
+    # Sign-in entry point. Necessarily public - it is what an anonymous
+    # visitor clicks to authenticate. Reaching it grants nothing on its own:
+    # new accounts are created INACTIVE and cannot use the API until an
+    # administrator approves them.
+    "/api/auth/linkedin/login",
 }
 
 # How long a minted authorize URL stays valid. Long enough to click through a
@@ -59,10 +65,24 @@ def api_key_configured() -> bool:
     return bool(key and not key.startswith("your_"))
 
 
-def check_api_key() -> Optional[tuple]:
-    """Enforce bearer-token auth. Returns an error response, or None to allow.
+def current_user():
+    """The User for this request, or None for machine (API-key) callers.
 
-    Wired into a before_request hook. Returning None lets the request proceed.
+    Resolved once per request and cached on `g`.
+    """
+    return getattr(g, "current_user", None)
+
+
+def authenticate_request() -> Optional[tuple]:
+    """Authenticate the request. Returns an error response, or None to allow.
+
+    Two accepted credentials, both presented as a bearer token:
+
+      * the API access key  - machine callers (scripts, the scheduler)
+      * a signed session token - a human who signed in with LinkedIn
+
+    Wired into a before_request hook, so anything under /api/ that is not on
+    the explicit allowlist is protected without the endpoint doing anything.
     """
     path = request.path.rstrip("/") or "/"
 
@@ -84,16 +104,74 @@ def check_api_key() -> Optional[tuple]:
         }), 503
 
     provided = _extract_key(request)
-    expected = get_settings().api_access_key
+    if not provided:
+        return jsonify({"error": "Unauthorized. Sign in or provide an API key."}), 401
 
-    # Constant-time compare so response timing cannot be used to guess the key.
-    if not provided or not hmac.compare_digest(provided, expected):
-        logger.warning(
-            f"Rejected unauthenticated request: {request.method} {request.path}"
-        )
-        return jsonify({"error": "Unauthorized. Provide a valid API key."}), 401
+    # 1. Machine caller. Constant-time compare so response timing cannot be
+    #    used to recover the key.
+    if hmac.compare_digest(provided, get_settings().api_access_key):
+        g.current_user = None
+        g.is_machine = True
+        return None
+
+    # 2. Human caller with a session token.
+    user_id = verify_session_token(provided)
+    if user_id is None:
+        logger.warning(f"Rejected request: {request.method} {request.path}")
+        return jsonify({"error": "Unauthorized. Sign in or provide an API key."}), 401
+
+    from backend.models.user import User
+    from backend.utils.database import get_session
+
+    db = get_session()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if user is None:
+            return jsonify({"error": "Account no longer exists."}), 401
+
+        # Checked on EVERY request, not just at login. A signed token cannot be
+        # revoked before it expires, so this is what makes deactivating a user
+        # take effect immediately.
+        if not user.is_active:
+            return jsonify({
+                "error": "Your account is not active. An administrator must "
+                         "approve it before you can use this tool."
+            }), 403
+
+        user.touch_last_seen()
+        db.commit()
+
+        # Detached copy: the session closes when this function returns, and a
+        # bound instance would raise DetachedInstanceError on attribute access
+        # inside the view.
+        db.refresh(user)
+        db.expunge(user)
+        g.current_user = user
+        g.is_machine = False
+    finally:
+        db.close()
 
     return None
+
+
+def require_admin() -> Optional[tuple]:
+    """Guard for admin-only endpoints. Returns an error response, or None.
+
+    Machine callers holding the API key are treated as administrators: the key
+    is already full-privilege, so refusing it here would protect nothing.
+    """
+    if getattr(g, "is_machine", False):
+        return None
+
+    user = current_user()
+    if user is None or not user.is_admin():
+        return jsonify({"error": "Administrator access required."}), 403
+    return None
+
+
+# Backwards-compatible alias for the original hook name.
+check_api_key = authenticate_request
 
 
 def _extract_key(req) -> Optional[str]:
@@ -138,6 +216,67 @@ def _b64encode(data: bytes) -> str:
 def _b64decode(data: str) -> bytes:
     padding = "=" * (-len(data) % 4)
     return base64.urlsafe_b64decode(data + padding)
+
+
+def make_session_token(user_id: int, days: int = 7) -> str:
+    """Mint a signed session token for a logged-in user.
+
+    Tokens rather than cookies because the SPA and the API are on different
+    origins. A cross-site session cookie needs SameSite=None; Secure, which
+    browsers are actively restricting as third-party cookies are phased out -
+    a login that works today and silently breaks on a browser update is not
+    worth shipping. A bearer token is unaffected by any of that.
+
+    Stateless and signed, so there is no session store to keep or migrate. The
+    trade-off is that a token cannot be revoked before it expires; `is_active`
+    is checked on every request so a deactivated user is locked out
+    immediately regardless.
+    """
+    payload = json.dumps(
+        {
+            "uid": user_id,
+            "exp": int(time.time()) + days * 86400,
+            "typ": "session",
+            "nonce": secrets.token_urlsafe(8),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+    return f"{_b64encode(payload)}.{_sign(payload)}"
+
+
+def verify_session_token(token: Optional[str]) -> Optional[int]:
+    """Return the user_id carried by a valid session token, else None."""
+    if not token or "." not in token:
+        return None
+
+    encoded, signature = token.rsplit(".", 1)
+
+    try:
+        payload = _b64decode(encoded)
+    except Exception:
+        return None
+
+    # Verify before parsing - never act on unauthenticated data.
+    if not hmac.compare_digest(_sign(payload), signature):
+        return None
+
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return None
+
+    # Reject an OAuth state replayed as a session token: both are signed with
+    # the same key, so the type claim is what keeps them from being confused.
+    if data.get("typ") != "session":
+        return None
+
+    if int(data.get("exp", 0)) < int(time.time()):
+        return None
+
+    uid = data.get("uid")
+    return uid if isinstance(uid, int) else None
 
 
 def make_oauth_state(user_id: int) -> str:

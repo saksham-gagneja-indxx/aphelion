@@ -18,8 +18,26 @@ class User(Base):
     # Primary key
     id = Column(Integer, primary_key=True, index=True)
 
-    # Instagram credentials and info
-    instagram_username = Column(String(255), unique=True, index=True, nullable=False)
+    # ---- Identity -------------------------------------------------------
+    # LinkedIn's OpenID Connect subject claim. This is the account's stable
+    # identifier and the login key: users are found-or-created by it, so the
+    # same person signing in twice never produces a duplicate record.
+    # Nullable because legacy rows predate SSO; unique so it cannot collide.
+    linkedin_sub = Column(String(255), unique=True, index=True, nullable=True)
+    full_name = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True, index=True)
+    avatar_url = Column(String(1000), nullable=True)
+
+    # "admin" or "operator". Admins can manage users and read the audit log.
+    # Kept as a string rather than an enum column so adding a role later is a
+    # code change, not a migration.
+    role = Column(String(50), default="operator", nullable=False, index=True)
+    last_seen_at = Column(DateTime, nullable=True)
+
+    # Instagram credentials and info.
+    # NULLABLE: users now sign up via LinkedIn and may never connect Instagram
+    # at all. This was NOT NULL when the app assumed a single seeded user.
+    instagram_username = Column(String(255), unique=True, index=True, nullable=True)
     instagram_session_id = Column(String(500), nullable=True)  # Session token for faster login
     instagram_user_id = Column(String(255), nullable=True)  # Instagram's internal user ID
     instagram_connected = Column(Boolean, default=False)
@@ -65,11 +83,47 @@ class User(Base):
     def __repr__(self):
         return f"<User(id={self.id}, instagram={self.instagram_username})>"
 
+    # ---- Roles ----------------------------------------------------------
+
+    ROLE_ADMIN = "admin"
+    ROLE_OPERATOR = "operator"
+    VALID_ROLES = (ROLE_ADMIN, ROLE_OPERATOR)
+
+    def is_admin(self) -> bool:
+        return self.role == self.ROLE_ADMIN
+
+    def touch_last_seen(self):
+        self.last_seen_at = utcnow()
+
+    def to_identity(self) -> dict:
+        """Shape returned by /api/me. Deliberately excludes tokens."""
+        return {
+            "id": self.id,
+            "name": self.full_name,
+            "email": self.email,
+            "avatar_url": self.avatar_url,
+            "role": self.role,
+            "is_active": self.is_active,
+            "linkedin_connected": self.linkedin_token_valid(),
+            "instagram_connected": bool(self.instagram_connected),
+            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+        }
+
+    def to_admin_dict(self, post_count: int = 0) -> dict:
+        """Shape returned by the admin user list. Still no tokens."""
+        data = self.to_identity()
+        data["post_count"] = post_count
+        data["created_at"] = self.created_at.isoformat() if self.created_at else None
+        return data
+
     def to_dict(self):
         """Convert model to dictionary"""
         return {
             "id": self.id,
             "instagram_username": self.instagram_username,
+            "full_name": self.full_name,
+            "email": self.email,
+            "role": self.role,
             "instagram_connected": self.instagram_connected,
             "linkedin_connected": self.linkedin_connected,
             "timezone": self.timezone,
