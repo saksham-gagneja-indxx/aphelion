@@ -3,8 +3,24 @@ Instagram Agent - Core Instagram interaction module
 Handles authentication, posting, and engagement tracking
 """
 
-from instagrapi import Client
-from instagrapi.types import UserShort, MediaOembed
+# instagrapi is an OPTIONAL dependency and is not installed in deployed
+# environments. It is a reverse-engineered client that logs in with a username
+# and password, which violates Instagram's Terms of Service - publishing now
+# goes through backend/core/publishers/ instead, and InstagramPublisher is
+# disabled pending Meta App Review.
+#
+# This module is kept only because routes.py still exposes the legacy Instagram
+# endpoints. The import is guarded so the app boots without instagrapi present;
+# the endpoints then fail with a clear message rather than an ImportError at
+# startup that would take the whole service down.
+try:
+    from instagrapi import Client
+
+    INSTAGRAPI_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised only in deployed envs
+    Client = None
+    INSTAGRAPI_AVAILABLE = False
+
 from typing import Optional, List, Dict
 import json
 from datetime import datetime, timedelta
@@ -52,6 +68,14 @@ class InstagramAgent:
         Returns:
             bool: True if authentication successful
         """
+        if not INSTAGRAPI_AVAILABLE:
+            logger.error(
+                "Instagram authentication is unavailable: instagrapi is not "
+                "installed. Instagram publishing is disabled pending Meta App "
+                "Review - use LinkedIn instead."
+            )
+            return False
+
         try:
             logger.info(f"🔐 Attempting Instagram authentication for: {username}")
 
