@@ -10,6 +10,7 @@ import {
   startUpload,
   subscribe,
 } from '../api/uploadStore'
+import CaptionAssist from '../components/CaptionAssist'
 import {
   BANNER_DANGER,
   BANNER_QUIET,
@@ -29,6 +30,9 @@ export default function Upload() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [caption, setCaption] = useState('')
+  // See Schedule.tsx: records a drafted caption, cleared the moment the
+  // operator edits it themselves.
+  const [captionFromAssist, setCaptionFromAssist] = useState(false)
 
   // Subscribes to the module-level store, so an upload started here keeps
   // running - and keeps reporting progress - across navigation.
@@ -51,6 +55,7 @@ export default function Upload() {
         userId: USER_ID,
         videoPath: upload.uploaded.path,
         caption: caption.trim() || undefined,
+        aiGeneratedCaption: captionFromAssist,
         platform: 'linkedin',
       })
       if (!created?.id) throw new Error('Could not determine the new post id')
@@ -196,10 +201,22 @@ export default function Upload() {
 
             <textarea
               value={caption}
-              onChange={(e) => setCaption(e.target.value)}
+              onChange={(e) => {
+                setCaption(e.target.value)
+                setCaptionFromAssist(false)
+              }}
               rows={3}
               placeholder="Caption for the post"
               className={`${FIELD} mt-4`}
+            />
+
+            <CaptionAssist
+              reelFilename={upload.uploaded.filename}
+              durationSeconds={upload.uploaded.duration_seconds}
+              onPick={(text) => {
+                setCaption(text)
+                setCaptionFromAssist(true)
+              }}
             />
 
             {postNow.isSuccess ? (

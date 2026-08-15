@@ -177,6 +177,11 @@ def create_post():
             video_size=reel_info.get("size_bytes"),
             caption=data.get("caption"),
             hashtags=data.get("hashtags"),
+            # Records that the caption came from caption assist rather than
+            # being typed. The column has existed since the first schema and
+            # was never written to; the Queue and the audit trail are more
+            # honest with it populated.
+            ai_generated_caption=bool(data.get("ai_generated_caption", False)),
             status=PostStatus.DRAFT,
             # Defaults to LinkedIn: it is the only platform that can currently
             # publish. Defaulting to Instagram created posts that were

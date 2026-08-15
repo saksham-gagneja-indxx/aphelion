@@ -25,7 +25,7 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | **Scheduled posts firing on time** | ⚠️ needs an always-on instance — a post due while the free instance is asleep publishes when it next wakes (within an hour) or is reported as failed |
 | Publish to Instagram | ⛔ blocked on Meta App Review |
 | Publish to a **company page** | ⛔ blocked on LinkedIn partner approval |
-| AI-generated captions | ⭕ not started — three switches exist (`Post.ai_generated_caption`, the `enable_caption_generation` user preference, and the `CLAUDE_API_KEY` setting) and none of them are wired to anything |
+| AI caption assist | ✅ working — three drafts from your one-line brief; needs a real `CLAUDE_API_KEY` |
 
 **Tests:** 98 backend (pytest) + 27 frontend (vitest), all passing.
 

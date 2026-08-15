@@ -21,6 +21,7 @@ For what the product does and how to run it, see the [README](../README.md).
 10. [Audit log](#audit-log)
 11. [API reference](#api-reference)
 12. [Frontend](#frontend)
+12b. [Caption assist](#caption-assist)
 13. [Deployment](#deployment)
 14. [Branching](#branching)
 15. [Testing](#testing)
@@ -546,6 +547,46 @@ header manually and reads the same `localStorage` key (`smm.session`).
 
 When adding an API module, route it through `apiFetch` before writing anything
 else.
+
+---
+
+## Caption assist
+
+Three LinkedIn captions for a reel, written by Claude from a one-line brief
+the operator types.
+
+**It does not watch the video, and that is the design.** The server knows a
+filename, a duration, a size and one thumbnail frame. A single frame of a
+talking-head reel is a person at a desk, and captioning from that alone
+produces confident generic filler — worse than nothing in a tool whose pitch
+is professional publishing. So the brief is the source of truth, the thumbnail
+is passed as weak context for setting and tone, and the system prompt forbids
+inventing specifics the brief does not contain. A caption that states a number
+nobody gave it publishes a false claim under a real person's name.
+
+Real video understanding needs audio transcription. ffmpeg is already in the
+image but no transcription model is — a separate dependency, cost and latency
+decision, not something to smuggle in behind a button.
+
+| | |
+|---|---|
+| Model | `claude-haiku-4-5` — ~1¢ per suggestion |
+| Shape | one `messages.create`, no tools, no agent |
+| Output | structured outputs (`output_config.format`) — three `{angle, text}` objects |
+| Effort / thinking | neither is sent — `output_config.effort` returns a 400 on Haiku 4.5, and the model has no adaptive thinking |
+| Vision | the reel's thumbnail as a base64 image block, when one exists |
+
+Three switches predated the feature and were wired to nothing:
+`Post.ai_generated_caption`, the `enable_caption_generation` user preference,
+and `CLAUDE_API_KEY`. All three now mean something — the flag and a
+non-placeholder key gate the endpoint, and the column records whether a
+caption was drafted or typed. Editing a drafted caption clears the flag: at
+that point it is the operator's caption.
+
+**The key is passed explicitly.** The setting is `CLAUDE_API_KEY` but the SDK
+reads `ANTHROPIC_API_KEY`, so `Anthropic(api_key=settings.claude_api_key)` is
+required. Relying on the SDK's own lookup fails with an authentication error
+that points at Anthropic rather than at the unset config value.
 
 ---
 
