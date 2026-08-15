@@ -134,7 +134,7 @@ Only three, each for a specific reason:
 
 | Path | Why it must be public |
 |---|---|
-| `/health` | Render's health probe carries no credentials |
+| `/health` | uptime probes carry no credentials |
 | `/api/auth/linkedin/login` | the entry point to signing in — the user has no token yet |
 | `/api/auth/linkedin/callback` | LinkedIn redirects the browser here; protected by signed state instead |
 
@@ -468,7 +468,7 @@ confirming existence would let post ids be enumerated.
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/health` | **public** — Render's probe |
+| `GET` | `/health` | **public** — uptime probe |
 | `GET` | `/api/status` | reports the database **dialect only**, never the URL |
 | `GET` | `/api/stats` · `/api/users/<id>/analytics` · `/api/users/<id>/optimal-time` | |
 | `POST` | `/api/users/<id>/analyze` | recompute analytics |
@@ -592,13 +592,29 @@ that points at Anthropic rather than at the unset config value.
 
 ## Deployment
 
-| Layer | Service | Cost |
+| Layer | Where | Notes |
 |---|---|---|
-| App (API + SPA) | Render, Docker runtime, Singapore | free tier |
+| Frontend (SPA) | Vercel | built from `frontend/`, static |
+| API | **run locally** — `python -m backend.app` | not deployed at the moment |
 | Database | Supabase Postgres, Singapore | free, no expiry |
-| Media | container filesystem | **ephemeral** |
+| Media | local filesystem | lost when the working directory is cleaned |
 
-Co-located in Singapore so the app-to-database round trip stays short.
+**The backend is not hosted.** `render.yaml` is commented out in full rather
+than deleted — strip the leading `# ` from every line to restore it. Nothing
+in the repo carries Render credentials; the values it referenced were always
+dashboard-side and are not in git.
+
+Two things follow from the split that did not apply when one image served
+both halves:
+
+- **CORS is live again.** The SPA is on a different origin from the API, so
+  the Vercel URL has to be in `CORS_ORIGINS` or every request is blocked.
+- **The SPA needs to be told where the API is.** Set `VITE_API_URL` at build
+  time on Vercel; empty means same-origin, which is no longer true.
+
+A browser on an HTTPS Vercel page calling `http://localhost:5000` is allowed
+in Chrome and Firefox (localhost counts as a trustworthy origin) but blocked
+in Safari. A tunnel — ngrok, cloudflared — is the way round it.
 
 ### The image
 
@@ -612,18 +628,15 @@ reinstall everything.
 
 ### Environment
 
-Secrets live only in Render's environment. `.env` is gitignored and never
-committed.
+Secrets live in a local `.env`, which is gitignored and never committed.
 
 Required: `DATABASE_URL`, `API_ACCESS_KEY`, `SECRET_KEY`, `LINKEDIN_CLIENT_ID`,
 `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `CORS_ORIGINS`,
 `ADMIN_LINKEDIN_SUBS`, `TIMEZONE`.
 
-> **Render environment changes do not trigger a redeploy.** Updating a variable
-> through the API or dashboard leaves the running container on the old values.
-> Trigger a deploy explicitly afterwards, then verify the change actually took
-> effect — a rotation that appears successful but has not rolled out is worse
-> than no rotation, because it is believed.
+> Restart the process after changing `.env` — settings are read at startup, so
+> an edited value has no effect until then. A rotation that appears successful
+> but has not been picked up is worse than no rotation, because it is believed.
 
 ---
 
@@ -653,7 +666,7 @@ problem, but both stop a fresh machine cold:
   (the suite does not touch Postgres), or use Python 3.12.
 - Settings validation requires `CLAUDE_API_KEY`, `INSTAGRAM_USERNAME` and
   `INSTAGRAM_PASSWORD` to be set or 65 tests error at collection. Use the same
-  placeholders `render.yaml` sets:
+  placeholders the commented-out `render.yaml` documents:
 
 ```bash
 CLAUDE_API_KEY=sk-ant-placeholder-not-used-in-v1 \
@@ -669,9 +682,10 @@ Analytics, Settings, Queue, Admin, Login pages on the other. When a change
 crosses that boundary, agree the response shape first and build both sides to
 it.
 
-**Rollback.** Render can redeploy any previous build from its dashboard, which
-skips the build step and is the fastest way out of a broken deploy. For a
-permanent fix, `git revert` on `main`.
+**Rollback.** Vercel keeps every previous frontend deployment and can promote
+one instantly, which is the fastest way out of a broken UI. The backend runs
+locally, so rolling it back is `git checkout` and a restart. For a permanent
+fix, `git revert` on `main`.
 
 ---
 
@@ -731,7 +745,7 @@ by exercising the real path.
 | No rate limiting | nothing throttles repeated requests | throttling middleware |
 | Some legacy routes accept a client-supplied `user_id` | an authenticated caller could act as another user on those routes | resolve identity from the session everywhere |
 | `ALLOW_NEW_SIGNUPS` open | anyone may create a pending account | set false once the team is onboarded |
-| Browser flags the shared `onrender.com` domain | users see a full-page warning | custom domain |
+| The API is not hosted | nothing works until the backend is running locally | deploy it somewhere |
 
 ---
 

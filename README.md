@@ -211,11 +211,11 @@ engagement model, not live LinkedIn metrics.
 
 | Limitation | Impact |
 |---|---|
-| Free Render tier sleeps after ~15 min idle | **scheduled posts cannot fire while asleep** — the paid tier fixes this |
-| Uploaded videos sit on ephemeral disk | media is lost on redeploy; the database is external and unaffected |
+| The API is not hosted — it runs locally | **scheduled posts only fire while the process is up**; a missed post publishes on the next start within the grace window, or is marked failed |
+| Uploaded videos sit on the local filesystem | media is lost if the working directory is cleaned; the database is external and unaffected |
 | Access tokens stored unencrypted | anyone with database access can read them |
 | No rate limiting | nothing throttles repeated requests |
-| Browser flags the `onrender.com` domain | a custom domain is the real fix |
+| The SPA and the API are on different origins | `CORS_ORIGINS` and `VITE_API_URL` both have to be set, or nothing talks to anything |
 
 ---
 
@@ -237,5 +237,5 @@ tests/          119 backend tests
 docs/
   ARCHITECTURE.md   everything technical
 Dockerfile      multi-stage: Node builds the SPA, Python serves it
-render.yaml     deployment config
+render.yaml     deployment config (commented out — backend is not hosted)
 ```

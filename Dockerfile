@@ -1,6 +1,9 @@
 # Multi-stage build: one image serving both the API and the built SPA.
 #
-# Why Docker rather than Render's native Python runtime:
+# NOTE: the backend is not currently deployed - see render.yaml. This image is
+# kept working so hosting can be switched back on without rebuilding it.
+#
+# Why Docker rather than a native Python runtime:
 #   * the frontend build needs Node, which the Python runtime does not
 #     guarantee
 #   * ffmpeg/ffprobe can be installed, so thumbnail generation and duration
@@ -48,11 +51,11 @@ COPY --from=frontend /build/dist ./frontend/dist
 # Runtime data directories. The application creates these on demand, but
 # making them explicit means a permissions or path problem surfaces at build
 # time rather than on a user's first upload.
-# NOTE: this filesystem is ephemeral on Render's free tier - uploaded videos
+# NOTE: this filesystem is ephemeral in a container - uploaded videos
 # do not survive a restart. The database is external and unaffected.
 RUN mkdir -p data/uploads data/reels data/logs
 
-# Unbuffered so logs reach Render's log stream immediately rather than sitting
+# Unbuffered so logs reach the host's log stream immediately rather than sitting
 # in a buffer until the process exits.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
