@@ -1,8 +1,7 @@
-"""Unified LLM provider interface supporting Claude (Anthropic) and Gemini (Google).
+"""Unified LLM provider interface: Claude (Anthropic), Gemini (Google), NVIDIA NIM.
 
 This module abstracts away provider-specific APIs, allowing the application to
-switch between Claude and Gemini without changing business logic in captions.py
-or composer.py.
+switch providers without changing business logic in captions.py or composer.py.
 """
 
 from abc import ABC, abstractmethod
@@ -654,12 +653,341 @@ Return valid JSON with this structure:
         return tool_calls
 
 
+class NvidiaNimProvider(LLMProvider):
+    """NVIDIA NIM provider (OpenAI-compatible API), default model Meta Muse Glimmer 30B.
+
+    NIM exposes an OpenAI-compatible chat completions endpoint, so this reuses
+    the `openai` SDK pointed at NVIDIA's base URL rather than a bespoke client.
+    """
+
+    def __init__(self):
+        self.settings = get_settings()
+        self.client = None
+        self._init_client()
+
+    def _init_client(self):
+        """Initialize the OpenAI-compatible client against NVIDIA's endpoint."""
+        try:
+            import openai
+
+            if not is_placeholder(self.settings.nvidia_api_key):
+                self.client = openai.OpenAI(
+                    api_key=self.settings.nvidia_api_key,
+                    base_url=self.settings.nvidia_base_url,
+                )
+        except ImportError:
+            logger.warning("openai package not installed")
+
+    def is_configured(self) -> bool:
+        """Check if NVIDIA NIM is configured."""
+        return self.client is not None and not is_placeholder(self.settings.nvidia_api_key)
+
+    def unavailable_reason(self) -> Optional[str]:
+        """Return reason NVIDIA NIM is unavailable."""
+        if is_placeholder(self.settings.nvidia_api_key):
+            return "NVIDIA NIM needs a real NVIDIA_API_KEY configured."
+        if self.client is None:
+            return "The openai package is not installed on the server."
+        return None
+
+    def suggest_captions(
+        self,
+        brief: str,
+        thumbnail: Optional[Path] = None,
+        duration_seconds: Optional[float] = None,
+    ) -> List[dict]:
+        """Generate three captions using the NVIDIA-hosted model."""
+        from backend.core.captions import CaptionError, SYSTEM as CAPTION_SYSTEM, CAPTION_SCHEMA
+
+        brief = (brief or "").strip()
+        if not brief:
+            raise CaptionError(
+                "Describe the reel in a sentence first — captions are written from "
+                "your brief, not from the video.",
+                status=400,
+            )
+
+        try:
+            import openai
+        except ImportError:
+            raise CaptionError(
+                "The openai package is not installed on the server.", status=503
+            )
+
+        if not self.is_configured():
+            reason = self.unavailable_reason()
+            raise CaptionError(reason or "NVIDIA NIM is not available.", status=503)
+
+        detail = f"Brief from the poster: {brief}"
+        if duration_seconds:
+            detail += f"\n\nThe reel is {duration_seconds:.0f} seconds long."
+
+        user_content: List[dict] = []
+        image = self._thumbnail_block(thumbnail)
+        if image:
+            user_content.append(image)
+            detail += (
+                "\n\nA thumbnail frame is attached. Treat it as a hint about setting "
+                "and tone only."
+            )
+        user_content.append({"type": "text", "text": detail})
+
+        # Structured output is requested via a JSON schema response_format, the
+        # same shape OpenAI-compatible APIs use. The system prompt also states
+        # the schema in words as a fallback for models that ignore the field.
+        schema_system = (
+            CAPTION_SYSTEM
+            + "\n\nRespond with a JSON object of exactly this shape: "
+            + '{"captions": [{"angle": "...", "text": "..."}, ...]} with exactly three entries.'
+        )
+
+        # 30B model with a reasoning parser can spend a chunk of the token
+        # budget on internal reasoning before it ever emits the JSON body, so
+        # this needs real headroom - 2048 truncated the answer mid-string in
+        # testing.
+        CAPTION_MAX_TOKENS = 8192
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.settings.nvidia_model,
+                max_tokens=CAPTION_MAX_TOKENS,
+                temperature=0.7,
+                messages=[
+                    {"role": "system", "content": schema_system},
+                    {"role": "user", "content": user_content},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "captions", "schema": CAPTION_SCHEMA},
+                },
+            )
+        except openai.AuthenticationError:
+            raise CaptionError(
+                "NVIDIA rejected the API key. Check NVIDIA_API_KEY.", status=502
+            )
+        except openai.RateLimitError:
+            raise CaptionError(
+                "NVIDIA NIM is rate limiting this account. Try again shortly.", status=429
+            )
+        except openai.APIConnectionError:
+            raise CaptionError("Could not reach NVIDIA NIM. Try again shortly.", status=502)
+        except openai.APIStatusError as e:
+            logger.error(f"NVIDIA NIM returned {e.status_code}: {e.message}")
+            # response_format with json_schema is not guaranteed on every
+            # NIM-hosted model; a 4xx here likely means it was rejected, so
+            # retry once without it and rely on the prompt instruction alone.
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.settings.nvidia_model,
+                    max_tokens=CAPTION_MAX_TOKENS,
+                    temperature=0.7,
+                    messages=[
+                        {"role": "system", "content": schema_system},
+                        {"role": "user", "content": user_content},
+                    ],
+                )
+            except Exception:
+                raise CaptionError(
+                    f"Caption generation failed upstream ({e.status_code}).", status=502
+                )
+
+        choice = response.choices[0]
+        if choice.finish_reason == "length":
+            logger.error(
+                f"NVIDIA NIM truncated the caption response at {CAPTION_MAX_TOKENS} tokens"
+            )
+            raise CaptionError(
+                "Caption generation ran out of room before finishing. Try a shorter brief.",
+                status=502,
+            )
+        text = choice.message.content or ""
+        try:
+            captions = json.loads(text)["captions"]
+        except (ValueError, KeyError, TypeError):
+            logger.error(f"Unparseable caption response: {text[:300]}")
+            raise CaptionError("Caption generation returned an unusable response.")
+
+        cleaned = [
+            {"angle": str(c.get("angle", "")).strip(), "text": str(c.get("text", "")).strip()}
+            for c in captions
+            if isinstance(c, dict) and str(c.get("text", "")).strip()
+        ]
+        if not cleaned:
+            raise CaptionError("Caption generation returned nothing usable.")
+
+        return cleaned[:3]
+
+    def run_composer_turn(
+        self,
+        messages: List[dict],
+        draft: Optional[dict],
+        reels: List[dict],
+        tz_name: str,
+        thumbnail: Optional[Path] = None,
+    ) -> dict:
+        """Run one composer turn using the NVIDIA-hosted model's tool calling."""
+        from backend.core.composer import (
+            ComposerError,
+            SYSTEM as COMPOSER_SYSTEM,
+            MAX_TOKENS,
+            MAX_TURNS,
+            MAX_MESSAGE_CHARS,
+            MAX_TOOL_ROUNDS,
+            TOOLS,
+            empty_draft,
+            _context_block,
+            _apply_tool,
+        )
+
+        try:
+            import openai
+        except ImportError:
+            raise ComposerError(
+                "The openai package is not installed on the server.", status=503
+            )
+
+        if not self.is_configured():
+            reason = self.unavailable_reason()
+            raise ComposerError(reason or "NVIDIA NIM is not available.", status=503)
+
+        if not messages:
+            raise ComposerError("Nothing to respond to.", status=400)
+        if len(messages) > MAX_TURNS:
+            raise ComposerError(
+                "This conversation has gone on long enough that it is cheaper to "
+                "start a fresh one. Post what you have, or begin again.",
+                status=400,
+            )
+        for m in messages:
+            if len(m.get("content") or "") > MAX_MESSAGE_CHARS:
+                raise ComposerError("That message is too long.", status=400)
+
+        draft = dict(draft or empty_draft())
+        reel_names = [r.get("filename") for r in reels if r.get("filename")]
+
+        convo: List[dict] = [{"role": "system", "content": COMPOSER_SYSTEM}]
+        for i, m in enumerate(messages):
+            role = "assistant" if m.get("role") == "assistant" else "user"
+            content = m.get("content") or ""
+            if i == 0 and role == "user":
+                content = f"{_context_block(reels, tz_name)}\n\n---\n\n{content}"
+            convo.append({"role": role, "content": content})
+
+        tools_oa = [self._convert_tool_to_openai(t) for t in TOOLS]
+        tool_notes: List[str] = []
+
+        for _ in range(MAX_TOOL_ROUNDS):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.settings.nvidia_model,
+                    max_tokens=MAX_TOKENS,
+                    temperature=0.3,
+                    messages=convo,
+                    tools=tools_oa,
+                )
+            except openai.AuthenticationError:
+                raise ComposerError("NVIDIA rejected the API key.", status=502)
+            except openai.RateLimitError:
+                raise ComposerError("Rate limited by NVIDIA NIM. Try again shortly.", status=429)
+            except openai.APIConnectionError:
+                raise ComposerError("Could not reach NVIDIA NIM.", status=502)
+            except openai.APIStatusError as e:
+                logger.error(f"NVIDIA NIM {e.status_code}: {e.message}")
+                raise ComposerError(f"Upstream error ({e.status_code}).", status=502)
+
+            choice = response.choices[0]
+            msg = choice.message
+            text = msg.content or ""
+            tool_calls = msg.tool_calls or []
+
+            if not tool_calls:
+                return {
+                    "reply": text,
+                    "draft": draft,
+                    "ready": bool(draft["reel_filename"] and draft["caption"] and draft["when"]),
+                    "actions": tool_notes,
+                }
+
+            convo.append(
+                {
+                    "role": "assistant",
+                    "content": text,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
+                }
+            )
+            for tc in tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except (ValueError, TypeError):
+                    args = {}
+                outcome = _apply_tool(tc.function.name, args, draft, reel_names, tz_name)
+                tool_notes.append(outcome)
+                logger.info(f"composer tool {tc.function.name}: {outcome}")
+                convo.append(
+                    {"role": "tool", "tool_call_id": tc.id, "content": outcome}
+                )
+
+        logger.warning("Composer hit the tool-round ceiling")
+        return {
+            "reply": (
+                "I got partway there but kept going in circles. Here is what I have "
+                "— tell me what to change."
+            ),
+            "draft": draft,
+            "ready": bool(draft["reel_filename"] and draft["caption"] and draft["when"]),
+            "actions": tool_notes,
+        }
+
+    @staticmethod
+    def _convert_tool_to_openai(tool: dict) -> dict:
+        """Convert a Claude-shaped tool def to the OpenAI/NIM function-calling shape."""
+        return {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            },
+        }
+
+    @staticmethod
+    def _thumbnail_block(thumbnail: Optional[Path]) -> Optional[dict]:
+        """Convert thumbnail to an OpenAI-style base64 image_url block."""
+        if thumbnail is None:
+            return None
+        try:
+            if not thumbnail.is_file():
+                return None
+            data = thumbnail.read_bytes()
+        except OSError as e:
+            logger.warning(f"Could not read thumbnail {thumbnail}: {e}")
+            return None
+
+        b64 = base64.standard_b64encode(data).decode("ascii")
+        return {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+        }
+
+
 def get_provider() -> LLMProvider:
     """Get the configured LLM provider instance."""
     settings = get_settings()
     provider_name = (settings.llm_provider or "claude").lower().strip()
 
-    if provider_name == "gemini":
+    if provider_name == "nvidia":
+        return NvidiaNimProvider()
+    elif provider_name == "gemini":
         return GeminiProvider()
     else:
         return ClaudeProvider()

@@ -40,11 +40,13 @@ python-dateutil==2.8.2
 
 # ============ AI ============
 # Caption assist and composer (backend/core/captions.py, backend/core/composer.py).
-# Both Claude (Anthropic) and Gemini (Google) are imported lazily so a deployment
-# without them degrades to a clear "not installed" message rather than failing
-# to boot.
+# Claude (Anthropic), Gemini (Google) and NVIDIA NIM providers are all imported
+# lazily so a deployment without one degrades to a clear "not installed"
+# message rather than failing to boot. NVIDIA NIM is OpenAI-compatible, so it
+# reuses the openai package rather than a bespoke client.
 anthropic==0.116.0
 google-generativeai==0.8.5
+openai==1.58.1
 
 # ============ MEDIA ============
 # Pillow is imported by reel_manager. ffmpeg/ffprobe are external binaries and
