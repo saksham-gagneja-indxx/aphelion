@@ -27,7 +27,7 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Retract (delete) a published post | ✅ working |
 | Queue — every post from draft to published, with failure reasons | ✅ working |
 | Delete a reel or post, reversible for 15 seconds | ✅ working |
-| Sign in with LinkedIn (OAuth 2.0) | ✅ working |
+| Sign in via Clerk (LinkedIn, Google, GitHub, Apple, Microsoft) | ✅ working |
 | Guest accounts — try it without LinkedIn, cannot publish | ✅ working |
 | Operations console (`/console`) — scheduler, storage, feature flags | ✅ working |
 | Guided setup that checks each step, including the publish scope | ✅ working |
@@ -42,7 +42,7 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Automatic thumbnail choice | ✅ working — samples and scores frames instead of grabbing a black one |
 | Reels persist across sign-out, ready for object storage | ✅ working — `MEDIA_BACKEND=local` today |
 
-**Tests:** 212 backend (pytest) + 38 frontend (vitest), all passing. CI runs
+**Tests:** 253 backend (pytest) + 36 frontend (vitest), all passing. CI runs
 both on every push to `main`.
 
 ---
@@ -153,9 +153,40 @@ python -c "import secrets; print('SECRET_KEY='    + secrets.token_urlsafe(48))"
 The app refuses every API request with `503` if `API_ACCESS_KEY` is unset. That
 is deliberate — see [ARCHITECTURE.md](docs/ARCHITECTURE.md#failing-closed).
 
+### Clerk (sign-in)
+
+Create an app at [dashboard.clerk.com](https://dashboard.clerk.com), then set:
+
+```ini
+VITE_CLERK_PUBLISHABLE_KEY=pk_...
+CLERK_SECRET_KEY=sk_...
+ADMIN_CLERK_EMAILS=you@example.com
+```
+
+Two dashboard settings are easy to miss and both fail *silently* — sign-in
+just 404s or bounces to a `*.accounts.dev` page with no useful error, on
+every provider, which looks exactly like a broken OAuth app and isn't:
+
+1. **Organizations → Settings → "Force organization selection" must be OFF.**
+   This app has no use for Clerk's Organizations feature; leaving this on
+   sends every sign-in through a hosted "choose an organization" step this
+   app never deploys a page for, and it 404s.
+2. **To offer LinkedIn as a sign-in option**, open **User & Authentication →
+   Social Connections → LinkedIn**, enable **"Use custom credentials,"** and
+   paste in the same `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET` from the
+   section below, with `openid`, `profile`, `email` added under Scopes.
+   Clerk has shared dev credentials for Google/GitHub/Microsoft/Apple, but
+   not LinkedIn — without this the icon renders but 404s on click. Also add
+   the redirect URL that page shows you
+   (`https://<your-instance>.clerk.accounts.dev/v1/oauth_callback`) to that
+   same LinkedIn app's **Authorized redirect URLs** below — it supports more
+   than one.
+
 ### LinkedIn app
 
-Create an app at [linkedin.com/developers/apps](https://www.linkedin.com/developers/apps)
+Needed regardless of Clerk: it's what grants **publish rights** later, in
+Setup — a separate permission from signing in. Create an app at
+[linkedin.com/developers/apps](https://www.linkedin.com/developers/apps)
 (it must be attached to a Company Page), then add **both** products:
 
 - *Sign In with LinkedIn using OpenID Connect* → grants `openid`, `profile`
@@ -188,17 +219,24 @@ python -m backend.app                 # API on :5000
 cd frontend && npm install && npm run dev   # SPA on :5173
 ```
 
-Open `http://localhost:5173` and sign in with LinkedIn. The first account
-becomes an active admin; everyone after that is created inactive and needs
-approving from the Admin panel.
+Open `http://localhost:5173` and sign in. With `ADMIN_CLERK_EMAILS` set to
+your email, you land as an active admin immediately; otherwise the first
+account becomes admin and everyone after needs approving from the Admin
+panel — see [ARCHITECTURE.md](docs/ARCHITECTURE.md#who-becomes-an-admin).
 
 ### Tests
 
 ```bash
-pytest tests/ -q                 # 212 backend tests
+pytest tests/ -q                 # 253 backend tests
 cd frontend
-npx tsc --noEmit                 # types
-npx vitest run                   # 35 frontend tests
+npx tsc -b                       # types — NOT `tsc --noEmit`: this repo's root
+                                  # tsconfig.json has "files": [], so bare
+                                  # --noEmit checks nothing at all and reports
+                                  # clean regardless of real errors. `tsc -b`
+                                  # (also what `npm run build` runs) is the
+                                  # one that actually respects the project
+                                  # references and catches something.
+npx vitest run                   # 36 frontend tests
 npm run build                    # the build Docker will run
 ```
 
@@ -335,7 +373,7 @@ frontend/src/
   api/          typed client modules, upload store
   pages/        Compose, Queue, Analytics, Setup, Docs, Settings, Admin, Console
   components/
-tests/          212 backend tests
+tests/          253 backend tests
 docs/
   ARCHITECTURE.md   everything technical
 Dockerfile      multi-stage: Node builds the SPA, Python serves it

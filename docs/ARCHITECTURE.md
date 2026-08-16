@@ -122,7 +122,45 @@ logs, browser history, and referrer headers.
 | Type | Header | Who uses it |
 |---|---|---|
 | API key | `Authorization: Bearer <API_ACCESS_KEY>` or `X-API-Key` | scripts, CI, admin tooling |
-| Session token | `Authorization: Bearer <signed token>` | the browser, after LinkedIn sign-in |
+| Session token | `Authorization: Bearer <signed token>` | the browser, after sign-in (Clerk or LinkedIn) |
+
+### Clerk sign-in
+
+Clerk is the identity provider the SPA actually shows: one "Sign in" control,
+Clerk's own modal, LinkedIn included as one of Clerk's OAuth providers
+alongside Google/GitHub/Apple/Microsoft. `POST /api/auth/clerk/verify`
+(`backend/utils/clerk_auth.py`) verifies the Clerk session JWT against Clerk's
+own JWKS — never `verify_signature: False` — then mints the exact same
+`make_session_token()` every other sign-in path produces, so nothing
+downstream (roles, `is_active`, audit log, ownership checks, rate limits) had
+to change to support it. See `ADMIN_CLERK_EMAILS` below for how admin status
+is decided.
+
+The direct LinkedIn OAuth *sign-in* endpoint (`/api/auth/linkedin/login`)
+still exists but is no longer wired into the UI — it was a second, separate
+identity path that bypassed Clerk entirely. LinkedIn's OAuth app is still
+used, unchanged, for the thing only it can do: granting `w_member_social`
+publish rights in Setup, once the visitor is already a signed-in account.
+
+**Two Clerk dashboard settings that silently break sign-in and have no code
+fix** — found the hard way, worth checking first if sign-in 404s or bounces
+to `noble-glowworm-....accounts.dev` instead of opening the in-app modal:
+
+1. **Organization Settings → "Force organization selection" must be OFF.**
+   This app doesn't use Clerk's Organizations feature (roles live in
+   `users.role`, not Clerk orgs) — with it on, EVERY sign-in attempt, on
+   every provider, redirects to a hosted "choose an organization" page that
+   this instance's Account Portal has never had deployed, and that page
+   404s. This looks exactly like a broken OAuth provider; it isn't.
+2. **LinkedIn specifically needs "Use custom credentials" enabled**, with
+   this project's own `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET` pasted in
+   and `openid`/`profile`/`email` added under Scopes — unlike Google/GitHub/
+   Microsoft, Clerk has no shared dev-mode credentials for LinkedIn, so the
+   icon renders but 404s until this is filled in. The LinkedIn app also needs
+   Clerk's redirect URL (`https://<your-instance>.clerk.accounts.dev/v1/oauth_callback`,
+   shown on that same dashboard page) added to its own **Authorized redirect
+   URLs** in the LinkedIn developer portal, alongside the existing
+   `/api/auth/linkedin/callback` one — LinkedIn apps support more than one.
 
 ### Failing closed
 
@@ -176,26 +214,40 @@ expired state is rejected before any token exchange happens.
 
 ## Identity and roles
 
-Sign-in is LinkedIn OpenID Connect. The `sub` claim — LinkedIn's stable
-subject identifier — is the login key, stored as `users.linkedin_sub`. Names
-and emails change; `sub` does not.
+Two independent sign-in paths, both landing on the same `User` row shape.
+Clerk accounts key on `users.clerk_id` (Clerk's stable user id); accounts that
+signed in directly via the legacy LinkedIn-as-login flow key on
+`users.linkedin_sub` (LinkedIn's stable subject claim). Names and emails
+change on both; neither identifier does.
 
 Two roles: `admin` and `operator`. Operators manage their own posts; admins
 additionally manage users and read the audit log.
 
 ### Who becomes an admin
 
-Controlled by `ADMIN_LINKEDIN_SUBS`, a comma-separated allowlist of LinkedIn
-`sub` values:
+Each sign-in path has its own allowlist, checked and **re-asserted on every
+sign-in** — self-healing: if the database is wiped or rebuilt, the right
+person becomes admin again simply by signing in again.
 
-- **Allowlist set** — first-account bootstrap is disabled entirely. Only listed
-  subjects get `admin`, and the role is **re-asserted on every sign-in**. This
-  self-heals: if the database is wiped or rebuilt, the right person becomes
-  admin again simply by signing in.
-- **Allowlist empty** — the first account created becomes an active admin, and
-  everyone after is created inactive, pending approval. Convenient for local
-  development, and safe because an empty allowlist means nobody is claiming
-  ownership yet.
+- **Clerk** — `ADMIN_CLERK_EMAILS`, a comma-separated allowlist of email
+  addresses (Clerk has already verified them, via the OAuth provider or a
+  verified code, so there is no unverified-email path to worry about here).
+- **Legacy LinkedIn login** — `ADMIN_LINKEDIN_SUBS`, a comma-separated
+  allowlist of LinkedIn `sub` values.
+
+For each path independently: allowlist set means first-account bootstrap is
+disabled entirely and only listed identities get `admin`; allowlist empty
+means the first account created *on that path* becomes an active admin
+(Clerk accounts are active immediately either way — see below), and everyone
+after is created inactive, pending approval. Convenient for local
+development, and safe because an empty allowlist means nobody is claiming
+ownership yet.
+
+Clerk-created accounts skip the pending-approval step Legacy LinkedIn login
+uses: `/api/auth/linkedin/login` is a public, unauthenticated endpoint reachable
+by anyone, so new accounts there default to inactive until an admin approves
+them. Clerk has already gated sign-up itself (email verification or an OAuth
+provider), so its accounts are active on arrival.
 
 ### Guard rails
 
