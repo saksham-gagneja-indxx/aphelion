@@ -239,7 +239,7 @@ export default function Landing() {
               Docs
             </Link>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 scale-[0.8] origin-right">
             <button type="button" onClick={startSignIn} className={BTN_OUTLINE}>
               Sign in
             </button>
@@ -250,7 +250,7 @@ export default function Landing() {
         </div>
       </nav>
 
-      <div className="relative z-10 mx-auto flex max-w-[1280px] flex-col items-center px-4 sm:px-8 pt-20">
+      <div className="relative z-10 mx-auto flex max-w-[1280px] flex-col items-center px-4 sm:px-8 pt-4">
         {/* Status chip */}
         <div className="animate-rise flex max-w-full flex-wrap items-center justify-center gap-3 rounded-lg py-1.5 pr-4 pl-1.5">
           <span className={`${EYEBROW} inline-flex items-center gap-2 bg-violet-900 px-2.5 py-1 text-violet-200 rounded-lg`}>
