@@ -154,7 +154,7 @@ function PostCard({
                   type="button"
                   onClick={() => onCancel(post.id)}
                   disabled={isCancelling}
-                  className="border border-line px-3 py-1 text-[14px] text-mist-500 transition hover:border-danger/50 hover:text-danger disabled:opacity-40"
+                  className="inline-flex min-h-11 items-center border border-line px-3 text-[14px] text-mist-500 transition hover:border-danger/50 hover:text-danger disabled:opacity-40"
                 >
                   {isCancelling ? 'Cancelling…' : 'Cancel'}
                 </button>
@@ -166,7 +166,7 @@ function PostCard({
                 onClick={() => onDelete(post)}
                 aria-label="Delete post"
                 title="Delete post"
-                className="border border-line p-1.5 text-mist-500 transition hover:border-danger/50 hover:text-danger"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center border border-line text-mist-500 transition hover:border-danger/50 hover:text-danger"
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -315,7 +315,7 @@ export default function Queue() {
           <button
             type="button"
             onClick={() => setFilter('all')}
-            className={`border px-3.5 py-1.5 text-[14px] transition ${
+            className={`inline-flex min-h-11 items-center border px-3.5 text-[14px] transition ${
               filter === 'all'
                 ? 'border-mist-50 bg-mist-50 text-ink-950'
                 : 'border-line bg-ink-900 text-mist-500 hover:text-mist-50'
@@ -330,7 +330,7 @@ export default function Queue() {
                 key={s}
                 type="button"
                 onClick={() => setFilter(s)}
-                className={`border px-3.5 py-1.5 text-[14px] transition ${
+                className={`inline-flex min-h-11 items-center border px-3.5 text-[14px] transition ${
                   filter === s ? cfg.pill : 'border-line bg-ink-900 text-mist-500 hover:text-mist-50'
                 }`}
               >

@@ -22,6 +22,9 @@ For what the product does and how to run it, see the [README](../README.md).
 11. [API reference](#api-reference)
 12. [Frontend](#frontend)
 12b. [Caption assist](#caption-assist)
+12c. [Media storage](#media-storage)
+12d. [Thumbnails](#thumbnails)
+12e. [The conversational composer](#the-conversational-composer)
 13. [Deployment](#deployment)
 14. [Branching](#branching)
 15. [Testing](#testing)
@@ -499,6 +502,10 @@ Four rules, all enforced by `src/index.css` and `src/ui.ts`:
   separated by 1px `#272727` rules. No glass, no backdrop blur, no shadows.
 - **The primary button is white with black text.** Violet is an accent, never
   a call to action.
+- **Green and red appear in exactly one place**: the ring around the
+  avatar, showing whether LinkedIn is connected. It is the one convention
+  nobody has to be taught, and it is never the only carrier — the account
+  menu says it in words and the button has a screen-reader label.
 - **Display type is light (300)**, large and tightly tracked — 80px on the
   landing hero, 40px on page titles. Body is 16–18px at 1.6.
 
@@ -587,6 +594,119 @@ that point it is the operator's caption.
 reads `ANTHROPIC_API_KEY`, so `Anthropic(api_key=settings.claude_api_key)` is
 required. Relying on the SDK's own lookup fails with an authentication error
 that points at Anthropic rather than at the unset config value.
+
+---
+
+## Media storage
+
+Reels live under `REELS_FOLDER/<user_id>/`, and they **survive a sign-out**.
+Nothing has ever deleted them on logout, and the folder is keyed by the
+database user id, which comes from LinkedIn's `sub` and is stable across
+sessions — sign out, sign back in, same folder. That is the sort of property
+that holds right up until someone adds a cleanup call, so there is a test
+asserting it.
+
+`backend/core/storage.py` is the seam for moving them somewhere real:
+
+| | |
+|---|---|
+| `MediaStore` | the five operations the app performs on a user's media |
+| `LocalMediaStore` | disk under `REELS_FOLDER`. The only backend implemented |
+| `ObjectMediaStore` | documented stub for S3 / R2 / GCS. Raises with instructions rather than silently returning nothing |
+| `MEDIA_BACKEND` | `local` (default) or `object` |
+
+Switching to object storage is: implement five methods, add the SDK, set the
+env var. Nothing above the store changes.
+
+**The awkward part is stated rather than hidden.** ffmpeg, ffprobe and the
+LinkedIn uploader take filesystem paths, not byte streams. So the interface
+has `local_path()` — a context manager that yields a real path, trivially for
+local disk and via a download-then-delete for a remote store. Every caller
+that hands a file to a subprocess goes through it, which means a remote
+backend has exactly one place to implement rather than a dozen call sites to
+hunt down.
+
+Path containment lives in the store too. Four routes each carried their own
+copy of resolve-then-check-`is_relative_to`; now there is one, and a filename
+that tries to walk out of a user's folder is refused in a single place.
+
+> **Both singletons rebuild when config changes.** `get_media_store()` and
+> `get_reel_manager()` used to pin whichever `REELS_FOLDER` was set when the
+> first caller arrived. Invisible in production, where the value never moves,
+> and a 404 with no explanation the moment one reader re-read the setting and
+> another did not. Constructing either is a couple of mkdirs.
+
+---
+
+## Thumbnails
+
+The old behaviour was frame zero. Reels routinely fade in from black, so that
+produced a black thumbnail: a real frame from the video, useless as a preview,
+and the first thing a reviewer sees in the Queue.
+
+Now five frames are sampled with the first and last tenth trimmed — openings
+fade, endings freeze on a card — and each is scored on two cheap signals:
+
+- **Detail**, the standard deviation of the greyscale histogram. A title card
+  or a blank wall has almost none; a face or a slide has plenty.
+- **Exposure**, distance from mid-grey. A fade-to-black and a blown-out flash
+  are both far from the middle and both bad thumbnails.
+
+Detail carries 70% of the weight, because a slightly dim frame with a person
+in it beats a perfectly exposed empty wall every time. Both come out of the
+256-bucket histogram, so the cost is independent of frame size.
+
+If every candidate fails to extract — a corrupt file, a codec ffmpeg will not
+decode — it falls back to frame zero, so a broken sampler can never cost a
+thumbnail the old code would have produced. `regenerate_thumbnail(path, ts)`
+takes an explicit timestamp for a manual override.
+
+With no duration available (no ffprobe) there is nothing to space out, so it
+degrades to the single frame at zero rather than guessing at offsets that may
+not exist.
+
+---
+
+## The conversational composer
+
+`/assistant`. Say "post the OAuth reel tomorrow at 9" and get back a chosen
+reel, a written caption and a proposed time. If something is genuinely missing
+it asks for one thing rather than presenting a form.
+
+### Claude cannot publish
+
+There is no publish tool on this loop and there should never be one. The three
+tools — `choose_reel`, `set_caption`, `set_schedule` — are pure edits to a JSON
+draft. Nothing on the path writes to the database, calls LinkedIn, or arms a
+job.
+
+The reason is not caution for its own sake. The model's input contains text
+other people can influence — a brief, a filename, a transcript later — and the
+output goes out under a real name on a professional profile. An autonomous
+publish tool turns "summarise this reel" into "post whatever the description
+tells you to post", and no prompt reliably prevents that.
+
+So the draft is turned into a post by the browser calling the same
+create/schedule/publish endpoints the manual screen uses, when a human presses
+the button. One code path to publishing, and it always starts with a click.
+Two tests assert the tool list and the routing table stay clean, so adding an
+action tool later means reading this first.
+
+### Shape
+
+| | |
+|---|---|
+| Model | `claude-opus-5`, effort `low` — one short turn, and a chat is judged on latency |
+| Loop | server-side; the tools only mutate a draft, so round-tripping each to the browser buys nothing |
+| State | stateless endpoint. Transcript and draft go up every turn |
+| Ceiling | four tool rounds, then it returns the partial draft rather than spinning |
+
+Statelessness matches the rest of the app — a signed session token and no
+server-side session store — and avoids a conversations table whose retention
+nobody has decided.
+
+A proposed time in the past is refused inside the tool, where Claude can still
+fix it, rather than being passed to the schedule endpoint to be refused there.
 
 ---
 
@@ -691,7 +811,7 @@ fix, `git revert` on `main`.
 
 ## Testing
 
-119 backend, 27 frontend.
+212 backend, 38 frontend.
 
 Backend coverage concentrates on what is genuinely risky:
 

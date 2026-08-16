@@ -13,6 +13,7 @@ import { CurrentUserProvider } from './current-user'
 import { UndoProvider } from './undo'
 import BoltLogo from './components/BoltLogo'
 import Landing from './components/Landing'
+import Assistant from './pages/Assistant'
 import Compose from './pages/Compose'
 import Queue from './pages/Queue'
 import Analytics from './pages/Analytics'
@@ -109,7 +110,7 @@ function BottomNav({
                top-row nav used — the bar floats over content, so a border on
                its own bottom edge would not read the same way. */
             className={({ isActive }) =>
-              `flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-[14px] whitespace-nowrap transition ${
+              `flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3.5 text-[14px] whitespace-nowrap transition ${
                 isActive
                   ? 'bg-violet-500 text-mist-50'
                   : 'text-mist-500 hover:bg-ink-800 hover:text-mist-50'
@@ -168,43 +169,41 @@ function UserMenu({ user }: { user: User }) {
 
   const connected = user.linkedin_connected
 
+  /* The ring around the avatar carries connection state — a glanceable dot
+     beats a sentence, and it costs no header width. Green and red are the two
+     colours outside the violet/white/black palette: the one convention nobody
+     has to be taught. Colour is never the only carrier — the account menu
+     spells the state out and the button has a screen-reader label. */
+  const ringClass = connected ? 'ring-online' : 'ring-danger'
+
   return (
     <div className="flex items-center gap-4">
-      {/* Connection state reads in violet or grey — the status palette is
-          reserved for posts, and this is not one. Hidden on narrow screens,
-          where it is repeated inside the menu instead. */}
-      <span
-        className={`hidden items-center gap-2 text-[14px] whitespace-nowrap md:inline-flex ${
-          connected ? 'text-mist-200' : 'text-mist-500'
-        }`}
-      >
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-violet-500' : 'bg-mist-500'}`}
-        />
-        {connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
-      </span>
-
       <div ref={menuRef} className="relative">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label="Account menu"
+          aria-label={`Account menu — LinkedIn ${connected ? 'connected' : 'not connected'}`}
           /* min-h-11: a 44px target, below which taps start missing. */
           className="flex min-h-11 items-center gap-2.5 pl-1"
         >
-          {user.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt=""
-              className="h-7 w-7 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-          )}
+          <span
+            title={connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
+            className={`inline-flex shrink-0 rounded-full ring-2 ring-offset-2 ring-offset-ink-950 ${ringClass}`}
+          >
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt=""
+                className="h-7 w-7 rounded-full object-cover"
+              />
+            ) : (
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-900 text-[13px] text-violet-200">
+                {user.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </span>
           <span className="hidden max-w-[140px] truncate text-[15px] text-mist-200 sm:inline">
             {user.name}
           </span>
@@ -235,13 +234,15 @@ function UserMenu({ user }: { user: User }) {
               {user.email && (
                 <p className="mt-0.5 truncate text-[13px] text-mist-500">{user.email}</p>
               )}
+              {/* The words behind the ring. Same two colours, so the menu
+                  teaches what the avatar is signalling. */}
               <span
                 className={`mt-2 inline-flex items-center gap-2 text-[13px] ${
-                  connected ? 'text-violet-300' : 'text-mist-500'
+                  connected ? 'text-online' : 'text-danger-soft'
                 }`}
               >
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-violet-500' : 'bg-mist-500'}`}
+                  className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-online' : 'bg-danger'}`}
                 />
                 {connected ? 'LinkedIn connected' : 'LinkedIn not connected'}
               </span>
@@ -371,6 +372,8 @@ export default function App() {
   // Settings and Docs deliberately live in the avatar menu rather than here:
   // they are visited rarely, and the nav has to survive a 375px screen.
   const navItems: { to: string; label: string }[] = [
+    // First, because it is the lazy path and the one most people want.
+    { to: '/assistant', label: 'Assistant' },
     { to: '/compose', label: 'New post' },
     { to: '/queue', label: 'Queue' },
     { to: '/analytics', label: 'Analytics' },
@@ -408,7 +411,11 @@ function Shell({
     refetchInterval: 60_000,
     retry: false,
   })
-  const pendingApprovals = stats?.users.pending_approval ?? 0
+  // Optional-chain all the way down, not just the first hop. `stats?.users`
+  // guards a missing response but not a response whose shape moved, and this
+  // badge is not worth an ErrorBoundary: a malformed /api/admin/stats would
+  // white-screen the entire app over a number in the corner.
+  const pendingApprovals = stats?.users?.pending_approval ?? 0
 
   return (
     <div className="relative min-h-full bg-ink-950">
@@ -486,6 +493,7 @@ function Shell({
                 />
               }
             />
+            <Route path="/assistant" element={<Assistant />} />
             <Route path="/compose" element={<Compose />} />
             {/* Upload and Schedule are one screen now; the old paths are kept
                 so existing links and bookmarks still land somewhere. */}

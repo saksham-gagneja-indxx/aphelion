@@ -306,16 +306,117 @@ class ReelManager:
             logger.error(f"Thumbnail generation failed for {video_path.name}: {str(e)}")
             return None
 
-    def _generate_thumbnail(self, video_path: Path, timestamp: float = 0.0) -> Optional[Path]:
+    # How many frames to sample when picking a thumbnail automatically. Five
+    # covers a short reel without making the user wait: each is one ffmpeg
+    # seek, and they run while the HTTP response has already gone back.
+    THUMBNAIL_CANDIDATES = 5
+
+    # Skip the first and last tenth of the video. Reels routinely open on a
+    # fade from black and close on a card or a freeze, and both score well on
+    # "is it dark" while being useless as a thumbnail.
+    THUMBNAIL_EDGE_MARGIN = 0.1
+
+    def candidate_timestamps(self, duration: Optional[float]) -> list:
+        """Evenly spaced sample points, edges trimmed.
+
+        With no duration (ffprobe missing or a container it cannot read) there
+        is nothing to space out, so this degrades to the old single frame at
+        zero rather than guessing at offsets that may not exist.
         """
-        Generate thumbnail from video using ffmpeg
+        if not duration or duration <= 0:
+            return [0.0]
 
-        Args:
-            video_path: Path to video file
-            timestamp: Timestamp in seconds to capture (default: start of video)
+        start = duration * self.THUMBNAIL_EDGE_MARGIN
+        end = duration * (1 - self.THUMBNAIL_EDGE_MARGIN)
+        if end <= start:
+            return [max(0.0, duration / 2)]
 
-        Returns:
-            Path to generated thumbnail or None
+        n = self.THUMBNAIL_CANDIDATES
+        if n == 1:
+            return [(start + end) / 2]
+        step = (end - start) / (n - 1)
+        return [round(start + step * i, 3) for i in range(n)]
+
+    @staticmethod
+    def score_frame(image: "Image.Image") -> float:
+        """How good a thumbnail is this frame? Higher is better.
+
+        Two cheap signals, no model:
+
+        * **Brightness**, scored as distance from mid-grey. A frame from a fade
+          to black is near 0 and a blown-out white flash is near 255; both are
+          bad thumbnails and both are far from the middle.
+        * **Detail**, approximated by the standard deviation of the greyscale
+          histogram spread. A flat title card or an empty wall has almost no
+          variance; a face, a slide, a shot with content has plenty.
+
+        Detail carries most of the weight because a slightly dim frame with a
+        person in it beats a perfectly exposed blank wall every time.
+        """
+        grey = image.convert("L")
+        # Downscale first: the score is a summary statistic, and computing it
+        # on a thumbnail-sized copy is roughly free versus a full 1080x1350
+        # frame.
+        grey.thumbnail((160, 160))
+
+        # Both statistics come out of the 256-bucket histogram. Materialising
+        # every pixel to average them is the obvious way and also the slow one;
+        # this is O(256) regardless of frame size, and it sidesteps getdata(),
+        # which Pillow 14 removes.
+        hist = grey.histogram()
+        n = sum(hist)
+        if not n:
+            return 0.0
+
+        mean = sum(i * c for i, c in enumerate(hist)) / n
+        variance = sum(c * (i - mean) ** 2 for i, c in enumerate(hist)) / n
+        stddev = variance ** 0.5
+
+        # 0 at pure black or pure white, 1 at mid-grey.
+        brightness = 1.0 - abs(mean - 127.5) / 127.5
+        # ~76 is roughly the stddev of a well-spread natural image; clamp so a
+        # noisy frame cannot run away with the score.
+        detail = min(stddev / 76.0, 1.0)
+
+        return 0.7 * detail + 0.3 * brightness
+
+    def _extract_frame(self, video_path: Path, timestamp: float, out: Path) -> bool:
+        """One frame at `timestamp` into `out`. True on success."""
+        try:
+            result = subprocess.run(
+                [
+                    self.ffmpeg,
+                    # -ss BEFORE -i seeks by keyframe, which is far faster than
+                    # decoding up to the timestamp. Accuracy to the nearest
+                    # keyframe is fine when we only want a representative frame.
+                    "-ss", str(timestamp),
+                    "-i", str(video_path),
+                    "-vframes", "1",
+                    "-vf", "scale=1080:1350",  # portrait reel aspect
+                    "-y",
+                    str(out),
+                ],
+                capture_output=True,
+                timeout=15,
+            )
+            return result.returncode == 0 and out.exists() and out.stat().st_size > 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+        except Exception as e:
+            logger.debug(f"Frame extract failed at {timestamp}s: {e}")
+            return False
+
+    def _generate_thumbnail(self, video_path: Path, timestamp: Optional[float] = None) -> Optional[Path]:
+        """Pick a thumbnail for a video.
+
+        With an explicit `timestamp` this grabs that single frame — the manual
+        override, used when someone picks a different candidate in the UI.
+
+        With no timestamp it samples several frames and keeps the best-scoring
+        one. The old behaviour was frame zero, which on a reel that fades in
+        from black produced a black thumbnail: technically a frame from the
+        video, useless as a preview, and the first thing a reviewer sees in the
+        Queue.
         """
         try:
             thumbnail_path = video_path.with_suffix(".jpg")
@@ -324,26 +425,58 @@ class ReelManager:
                 logger.warning("⚠️  ffmpeg unavailable, skipping thumbnail generation")
                 return None
 
-            result = subprocess.run(
-                [
-                    self.ffmpeg,
-                    "-i", str(video_path),
-                    "-ss", str(timestamp),
-                    "-vframes", "1",
-                    "-vf", "scale=1080:1350",  # Instagram reel aspect ratio
-                    "-y",  # Overwrite if exists
-                    str(thumbnail_path)
-                ],
-                capture_output=True,
-                timeout=10
-            )
-
-            if result.returncode == 0 and thumbnail_path.exists():
-                logger.debug(f"Thumbnail generated: {thumbnail_path}")
-                return thumbnail_path
-            else:
-                logger.warning(f"ffmpeg failed: {result.stderr.decode()}")
+            if timestamp is not None:
+                if self._extract_frame(video_path, timestamp, thumbnail_path):
+                    logger.debug(f"Thumbnail at {timestamp}s: {thumbnail_path}")
+                    return thumbnail_path
+                logger.warning(f"ffmpeg could not extract a frame at {timestamp}s")
                 return None
+
+            duration = self._get_video_duration(video_path)
+            timestamps = self.candidate_timestamps(duration)
+
+            best_score = -1.0
+            best_at = None
+            scratch = video_path.with_suffix(".cand.jpg")
+
+            for ts in timestamps:
+                if not self._extract_frame(video_path, ts, scratch):
+                    continue
+                try:
+                    with Image.open(scratch) as frame:
+                        score = self.score_frame(frame)
+                except Exception as e:
+                    logger.debug(f"Could not score frame at {ts}s: {e}")
+                    continue
+
+                logger.debug(f"  candidate {ts}s scored {score:.3f}")
+                if score > best_score:
+                    best_score = score
+                    best_at = ts
+
+            try:
+                scratch.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+            # Every candidate failed to extract - a corrupt file, or a codec
+            # ffmpeg will not decode. Fall back to frame zero so a broken
+            # sampler never costs a thumbnail that the old code would have got.
+            if best_at is None:
+                logger.warning("No candidate frame scored; falling back to frame 0")
+                return (
+                    thumbnail_path
+                    if self._extract_frame(video_path, 0.0, thumbnail_path)
+                    else None
+                )
+
+            if self._extract_frame(video_path, best_at, thumbnail_path):
+                logger.info(
+                    f"🖼️  Thumbnail from {best_at}s (score {best_score:.2f}) "
+                    f"of {len(timestamps)} candidates"
+                )
+                return thumbnail_path
+            return None
 
         except FileNotFoundError:
             logger.warning("⚠️  ffmpeg not found, skipping thumbnail generation")
@@ -351,6 +484,14 @@ class ReelManager:
         except Exception as e:
             logger.error(f"Failed to generate thumbnail: {str(e)}")
             return None
+
+    def regenerate_thumbnail(self, video_path: Path, timestamp: float) -> Optional[Path]:
+        """Replace a reel's thumbnail with the frame at `timestamp`.
+
+        Synchronous: the caller is a person who just clicked a different frame
+        and is watching for it to change.
+        """
+        return self._generate_thumbnail(video_path, timestamp=timestamp)
 
     def delete_reel(self, filepath: Path, delete_thumbnail: bool = True) -> bool:
         """
@@ -489,8 +630,17 @@ _reel_manager = None
 
 
 def get_reel_manager() -> ReelManager:
-    """Get or create the global reel manager instance"""
+    """The shared reel manager.
+
+    Rebuilt when REELS_FOLDER changes rather than pinned for the life of the
+    process. The plain singleton captured whichever folder was configured when
+    the first caller arrived and then disagreed with anything that re-read the
+    setting - invisible while every reader went through this same stale object,
+    and a 404 the moment one of them did not. Constructing it is a couple of
+    mkdirs and a `which`, so re-checking costs nothing worth keeping the bug for.
+    """
     global _reel_manager
-    if _reel_manager is None:
+    configured = Path(get_settings().reels_folder)
+    if _reel_manager is None or _reel_manager.reels_folder != configured:
         _reel_manager = ReelManager()
     return _reel_manager

@@ -203,7 +203,7 @@ export default function Docs() {
                 <a
                   href={`#${s.id}`}
                   onClick={() => setActive(s.id)}
-                  className={`block border-l-2 px-3 py-2 text-[15px] whitespace-nowrap transition lg:whitespace-normal ${
+                  className={`flex min-h-11 items-center border-l-2 px-3 text-[15px] whitespace-nowrap transition lg:whitespace-normal ${
                     active === s.id
                       ? 'border-violet-500 text-mist-50'
                       : 'border-transparent text-mist-500 hover:text-mist-50'

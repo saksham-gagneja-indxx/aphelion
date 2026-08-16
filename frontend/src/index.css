@@ -49,6 +49,12 @@
   --color-danger:      #FF5C5C;
   --color-danger-soft: #FFB4B4;
 
+  /* Connection state on the avatar ring. Green/red is the one convention a
+     user never has to be taught, so it earns its place outside the palette —
+     but it is never the only carrier: the menu spells the state out in words
+     and the avatar button has a screen-reader label. */
+  --color-online:      #35D07F;
+
   --animate-rise:    rise .7s cubic-bezier(.22,1,.36,1) both;
   --animate-rise-in: rise-in .5s cubic-bezier(.22,1,.36,1) both;
   --animate-fade-in: fade-in .8s ease both;
