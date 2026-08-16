@@ -882,7 +882,19 @@ by exercising the real path.
 - Every route authenticated by default, failing closed when misconfigured
 - Constant-time credential comparison, header-only
 - Signed, expiring OAuth state with a type claim preventing replay as a session
-- CORS restricted to configured origins, never `*`
+- CORS restricted to configured origins. A `*` is refused outright, and so is
+  a `localhost` origin when `FLASK_ENV=production` — both were previously
+  reachable by editing one environment variable
+- Security headers on every response, including errors and the SPA: CSP with
+  `script-src 'self'` and `frame-ancestors 'none'`, HSTS in production only,
+  `nosniff`, `Referrer-Policy`, `Permissions-Policy`. Mirrored in
+  `frontend/vercel.json`, because the deployed SPA is served by Vercel and
+  never passes through Flask; a test asserts the two stay identical
+- Rate limits on the endpoints that cost something: guest sign-in (a row and a
+  directory per call), uploads (a large write plus ffmpeg), and the two model
+  endpoints (real money per call)
+- Dependencies clean under `pip-audit`; Flask, Werkzeug, flask-cors, gunicorn
+  and python-dotenv upgraded past known CVEs
 - Ownership enforced from the session; cross-user access returns 404
 - Admin actions guarded against self-lockout
 - Append-only audit trail that survives user deletion
@@ -895,7 +907,8 @@ by exercising the real path.
 | Gap | Consequence | Fix |
 |---|---|---|
 | Tokens stored unencrypted | database access reveals LinkedIn tokens | application-level encryption |
-| No rate limiting | nothing throttles repeated requests | throttling middleware |
+| Rate limiting is in-process | correct only while the app runs as one worker — which it does, because APScheduler lives in-process and a second worker would double-publish. Add a worker and the limits multiply by the worker count | shared counters (Redis) if the process count ever changes |
+| Anonymous limits key on `remote_addr` | behind a proxy that is the proxy, so everyone shares one counter. Coarser than intended rather than bypassable | `ProxyFix` plus a trusted-hop count when a proxy is introduced |
 | Some legacy routes accept a client-supplied `user_id` | an authenticated caller could act as another user on those routes | resolve identity from the session everywhere |
 | `ALLOW_NEW_SIGNUPS` open | anyone may create a pending account | set false once the team is onboarded |
 | The API is not hosted | nothing works until the backend is running locally | deploy it somewhere |

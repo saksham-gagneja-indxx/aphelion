@@ -35,6 +35,10 @@ def app(monkeypatch, tmp_path):
     monkeypatch.setenv("CLAUDE_API_KEY", REAL_KEY)
     monkeypatch.setenv("ENABLE_CAPTION_GENERATION", "true")
     monkeypatch.setenv("REELS_FOLDER", str(tmp_path / "reels"))
+    # Pin the provider. These tests patch `anthropic.Anthropic`, so they only
+    # mean anything against the Claude path - inheriting whatever the global
+    # default happens to be made all six 503 the moment that default changed.
+    monkeypatch.setenv("LLM_PROVIDER", "claude")
 
     import backend.utils.database as database
     import backend.core.reel_manager as reel_manager
@@ -105,7 +109,11 @@ def test_placeholder_key_reports_unavailable_rather_than_calling_out(app, client
         body = response.get_json()
 
     assert body["available"] is False
-    assert "placeholder" in body["reason"].lower()
+    # Assert the property that matters - the reason points at the config value
+    # the operator has to fix - rather than at one particular wording of it.
+    # The literal word "placeholder" was an incidental of the old message and
+    # broke when the provider seam rephrased it, while the behaviour was fine.
+    assert "claude_api_key" in body["reason"].lower()
 
 
 def test_disabled_flag_is_honoured(app, client):
@@ -129,7 +137,13 @@ def test_empty_brief_is_refused_before_any_spend(app, client):
 
     assert response.status_code == 400
     assert "brief" in response.get_json()["error"].lower()
-    sdk.assert_not_called(), "no API call should be made for an empty brief"
+    # Spend happens on messages.create, not on constructing the client - the
+    # provider seam now builds the client up front, which costs nothing. Assert
+    # on the call that would actually be billed.
+    #
+    # (The original line was also written as a bare tuple expression, so it
+    # asserted nothing at all even before the refactor.)
+    sdk.return_value.messages.create.assert_not_called()
 
 
 def test_reel_filename_cannot_escape_the_users_folder(app, client):
