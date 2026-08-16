@@ -82,8 +82,9 @@ describe('App routing and auth gate', () => {
     )
 
     await waitFor(() => {
-      // The header title should be visible
-      const elements = screen.getAllByText('Reel Automation')
+      // The wordmark is icon-only now; the name lives in an aria-label
+      // rather than visible text.
+      const elements = screen.getAllByLabelText('Reel Automation')
       expect(elements.length).toBeGreaterThan(0)
     })
     

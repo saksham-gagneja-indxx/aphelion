@@ -68,11 +68,8 @@ function PublicShell({ children }: { children: React.ReactNode }) {
       <GridBackdrop />
       <header className="sticky top-0 z-20 border-b border-line bg-ink-950">
         <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-7 py-4">
-          <NavLink to="/" className="flex items-center gap-2.5">
-            <BoltLogo className="text-violet-500" />
-            <span className="font-display text-[16px] font-medium tracking-[-.01em] whitespace-nowrap text-mist-50">
-              Reel Automation
-            </span>
+          <NavLink to="/" aria-label="Reel Automation" className="flex items-center">
+            <BoltLogo className="text-mist-50" />
           </NavLink>
           <NavLink to="/" className={BTN_OUTLINE}>
             Sign in
@@ -434,11 +431,8 @@ function Shell({
         {/* Page links moved to the floating BottomNav; this bar is now just
             identity and the account menu. */}
         <div className="mx-auto flex max-w-[1280px] items-center justify-between px-7 py-4">
-          <div className="flex items-center gap-2.5">
-            <BoltLogo className="text-violet-500" />
-            <span className="font-display text-[16px] font-medium tracking-[-.01em] whitespace-nowrap text-mist-50">
-              Reel Automation
-            </span>
+          <div aria-label="Reel Automation">
+            <BoltLogo className="text-mist-50" />
           </div>
           <UserMenu user={user} />
         </div>
