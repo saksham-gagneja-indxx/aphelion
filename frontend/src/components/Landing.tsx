@@ -1,9 +1,20 @@
 /**
  * Signed-out landing page.
  *
- * This is also the sign-in gate: App renders it whenever /api/me answers 401,
- * so every call to action starts the LinkedIn OAuth flow, and the
- * ?linkedin=<status> messages the callback redirects with surface here.
+ * This is also the sign-in gate: App renders it whenever /api/me answers 401.
+ * Clerk is the ONLY way in - one "Sign in" trigger, everywhere on this page,
+ * always opening the same modal. Clerk's own "Don't have an account? Sign up"
+ * link inside that modal covers sign-up, so there is deliberately no separate
+ * sign-up button here to keep in sync with it.
+ *
+ * LinkedIn is reachable as one of Clerk's OAuth providers in that same modal -
+ * there is no second, direct-to-LinkedIn button. That direct button used to
+ * call this SERVER's own LinkedIn app straight from the landing page (bypassing
+ * Clerk, and identity, entirely) purely to sign in; the identity question is
+ * Clerk's job now. The server's own LinkedIn app is still used, unchanged, for
+ * the thing only it can do: granting w_member_social publish rights, which
+ * happens later in Setup once the visitor is already a recognised, signed-in
+ * account - see backend/api/auth_routes.py's /auth/linkedin/start.
  *
  * Styled to render.com's structure — 80px/300 display type, square edges,
  * hairline rules, a white primary button — with violet as the only accent.
@@ -19,49 +30,12 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SignInButton, useAuth } from '@clerk/clerk-react'
 import BoltLogo from './BoltLogo'
-import {
-  CLERK_ENABLED,
-  bridgeClerkSession,
-  getGuestEnabled,
-  linkedInLoginUrl,
-  openBlankTab,
-  signInAsGuest,
-} from '../api/auth'
-import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW } from '../ui'
-
-const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
-  denied: { text: 'You declined the LinkedIn authorization request. Please authorize to sign in.', type: 'error' },
-  state_mismatch: { text: 'Security check failed (state mismatch). Please try signing in again.', type: 'error' },
-  token_failed: { text: 'Failed to retrieve access token from LinkedIn.', type: 'error' },
-  userinfo_failed: { text: 'Failed to fetch your profile from LinkedIn.', type: 'error' },
-  network_error: { text: 'A network error occurred while communicating with LinkedIn.', type: 'error' },
-  pending_approval: { text: 'Your account is awaiting approval.', type: 'info' },
-}
+import { CLERK_ENABLED, bridgeClerkSession, getGuestEnabled, signInAsGuest } from '../api/auth'
+import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW, META } from '../ui'
 
 /** The in-app docs, not the GitHub README: a visitor here has no repository
  *  access, and the page they need explains how to get an account. */
 const DOCS_PATH = '/docs'
-
-/**
- * Consent happens in a new tab, so this page (and anything typed into it) is
- * still here afterwards. The tab closes itself once it has the token, and this
- * one refreshes off the resulting 'storage' event - see App.
- *
- * linkedInLoginUrl() carries API_BASE: empty on a same-origin deploy, set when
- * frontend and backend live on different hosts (Vercel + Render). A bare path
- * would send the browser to the frontend's own origin and 404.
- *
- * Falls back to navigating this tab when a popup blocker refuses the open,
- * which is the old behaviour rather than a dead button.
- */
-const startSignIn = () => {
-  const tab = openBlankTab()
-  if (tab) {
-    tab.location.href = linkedInLoginUrl()
-  } else {
-    window.location.href = linkedInLoginUrl()
-  }
-}
 
 /**
  * Hairline grid with a single violet wash behind the headline. Static: the
@@ -252,7 +226,6 @@ function ClerkSessionBridge() {
 }
 
 export default function Landing() {
-  const [msg, setMsg] = useState<{ text: string; type: 'error' | 'info' } | null>(null)
   const [guestBusy, setGuestBusy] = useState(false)
   const [guestError, setGuestError] = useState<string | null>(null)
   const queryClient = useQueryClient()
@@ -279,17 +252,6 @@ export default function Landing() {
     }
   }
 
-  useEffect(() => {
-    // Parse query params for ?linkedin=<status>
-    const params = new URLSearchParams(window.location.search)
-    const status = params.get('linkedin')
-    if (status && status !== 'connected') {
-      setMsg(MESSAGES[status] || { text: `Authentication failed: ${status}`, type: 'error' })
-      // Optionally remove the query param so a refresh doesn't keep showing it
-      window.history.replaceState({}, document.title, window.location.pathname)
-    }
-  }, [])
-
   return (
     <div className="relative min-h-screen overflow-hidden bg-ink-950">
       <HeroBackdrop />
@@ -309,27 +271,13 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-3 scale-[0.8] origin-right">
             {CLERK_ENABLED ? (
-              <>
-                <SignInButton mode="modal">
-                  <button type="button" className={BTN_OUTLINE}>
-                    Sign in
-                  </button>
-                </SignInButton>
-                <SignInButton mode="modal">
-                  <button type="button" className={BTN_PRIMARY}>
-                    Start for free
-                  </button>
-                </SignInButton>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={startSignIn} className={BTN_OUTLINE}>
+              <SignInButton mode="modal">
+                <button type="button" className={BTN_PRIMARY}>
                   Sign in
                 </button>
-                <button type="button" onClick={startSignIn} className={BTN_PRIMARY}>
-                  Start for free
-                </button>
-              </>
+              </SignInButton>
+            ) : (
+              <span className={META}>Sign-in is not configured on this server.</span>
             )}
           </div>
         </div>
@@ -359,51 +307,25 @@ export default function Landing() {
           happened, and why.
         </p>
 
-        {msg && (
-          <div
-            className={`mt-8 w-full max-w-[620px] text-left text-[15px] ${
-              msg.type === 'error'
-                ? `${BANNER_DANGER} text-danger-soft`
-                : 'border border-line bg-ink-900 px-4 py-3.5 text-mist-200'
-            }`}
-          >
-            {msg.text}
-          </div>
-        )}
-
-        {/* Sign in starts OAuth — there is no separate signup. Guest is a real
-            account, just a sandboxed one; see the note under the buttons. */}
+        {/* One sign-in trigger, one place it lives. Clerk's own modal covers
+            sign-up ("Don't have an account?") and every OAuth provider,
+            LinkedIn included - there is nothing else to wire up here. Guest
+            is unrelated to identity: a real, sandboxed account for trying the
+            tool without any provider at all. */}
         <div className="animate-rise mt-10 flex w-full max-w-[560px] flex-col items-center justify-center gap-3 [animation-delay:.3s] scale-90">
-          {CLERK_ENABLED && (
-            <SignInButton mode="modal">
-              <button
-                type="button"
-                className={`${BTN_PRIMARY} w-full justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
-              >
-                Sign in
-              </button>
-            </SignInButton>
-          )}
-          {CLERK_ENABLED && <ClerkSessionBridge />}
           <div className="flex w-full flex-row items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={startSignIn}
-              className={`${CLERK_ENABLED ? BTN_OUTLINE : BTN_PRIMARY} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
-            >
-              Sign in with LinkedIn
-              <svg
-                className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M5 12h14m-6-6 6 6-6 6" />
-              </svg>
-            </button>
+            {CLERK_ENABLED ? (
+              <SignInButton mode="modal">
+                <button
+                  type="button"
+                  className={`${BTN_PRIMARY} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
+                >
+                  Sign in
+                </button>
+              </SignInButton>
+            ) : (
+              <p className={`${META} flex-1 text-center`}>Sign-in is not configured on this server.</p>
+            )}
             {guestEnabled && (
               <button
                 type="button"
@@ -415,6 +337,7 @@ export default function Landing() {
               </button>
             )}
           </div>
+          {CLERK_ENABLED && <ClerkSessionBridge />}
           <Link
             to={DOCS_PATH}
             className={`${BTN_OUTLINE} w-full justify-center px-8 py-3 sm:py-4 text-[13px] sm:text-[18px] hover:text-mist-50`}

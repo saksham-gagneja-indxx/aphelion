@@ -27,17 +27,26 @@ describe('Landing page', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders the hero and a way in', () => {
+  it('renders the hero', () => {
     renderWithQuery(<Landing />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'Schedule once.Ship every reel on time.',
     )
-    // Nav and hero both offer it, and both start the same OAuth flow.
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  })
+
+  it('reports sign-in as unavailable when Clerk is not configured', () => {
+    // vitest.config.ts pins VITE_CLERK_PUBLISHABLE_KEY to '' for every test -
+    // see its comment for why. Sign-in has exactly one path now (Clerk's
+    // modal, LinkedIn included as one of its providers), so with Clerk off
+    // there is deliberately no button to fall back to.
+    renderWithQuery(<Landing />)
     expect(
-      screen.getByRole('button', { name: /Sign in with LinkedIn/ }),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/Authentication failed/)).not.toBeInTheDocument()
+      screen.getAllByText('Sign-in is not configured on this server.').length,
+    ).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Sign in with LinkedIn/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('links the docs in-app rather than out to the repository', () => {
@@ -68,25 +77,4 @@ describe('Landing page', () => {
     expect(screen.queryByRole('button', { name: /guest/i })).not.toBeInTheDocument()
   })
 
-  it('displays specific error for ?linkedin=denied', () => {
-    window.history.pushState({}, '', '/?linkedin=denied')
-    renderWithQuery(<Landing />)
-    expect(
-      screen.getByText(
-        'You declined the LinkedIn authorization request. Please authorize to sign in.',
-      ),
-    ).toBeInTheDocument()
-  })
-
-  it('displays generic error for unknown status', () => {
-    window.history.pushState({}, '', '/?linkedin=unknown_error')
-    renderWithQuery(<Landing />)
-    expect(screen.getByText('Authentication failed: unknown_error')).toBeInTheDocument()
-  })
-
-  it('ignores ?linkedin=connected', () => {
-    window.history.pushState({}, '', '/?linkedin=connected')
-    renderWithQuery(<Landing />)
-    expect(screen.queryByText(/Authentication failed/)).not.toBeInTheDocument()
-  })
 })

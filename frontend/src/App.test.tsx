@@ -52,12 +52,13 @@ describe('App routing and auth gate', () => {
       { router: false },
     )
 
+    // The signed-out landing page, not the app. vitest.config.ts pins
+    // VITE_CLERK_PUBLISHABLE_KEY to '' for every test, so the gate itself
+    // (not a specific sign-in control, which needs Clerk configured) is what
+    // this asserts on.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Schedule once.')
     })
-
-    // The signed-out landing page, not the app
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Schedule once.')
 
     // The main app layout should NOT be visible.
     //

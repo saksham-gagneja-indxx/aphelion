@@ -7,6 +7,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react'
 import { Analytics } from '@vercel/analytics/react'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { clerkAppearance } from './clerkAppearance'
 import './index.css'
 
 // Unset in any environment that hasn't configured Clerk yet: rather than
@@ -49,7 +50,11 @@ onlineManager.setOnline(true)
 function ClerkProviderOrPassthrough({ children }: { children: ReactNode }) {
   if (!CLERK_PUBLISHABLE_KEY) return <>{children}</>
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} afterSignOutUrl="/">
+    <ClerkProvider
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      afterSignOutUrl="/"
+      appearance={clerkAppearance}
+    >
       {children}
     </ClerkProvider>
   )
