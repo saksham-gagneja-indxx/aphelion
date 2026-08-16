@@ -1,4 +1,4 @@
-# Reel Automation
+# Post Pilot
 
 Upload a video once, and publish or schedule it to LinkedIn from a single
 dashboard — with roles, approvals, and an audit trail for every post.
