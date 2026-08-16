@@ -534,6 +534,9 @@ export default function Compose() {
               <p className={`${META} mt-2`}>
                 Interpreted in the account timezone configured on the backend.
               </p>
+              <p className={`${META} mt-1`}>
+                Free-tier hosting may delay publishing by up to 15 minutes past the scheduled time.
+              </p>
             </div>
           )}
 
