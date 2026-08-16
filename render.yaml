@@ -90,10 +90,16 @@ services:
         value: sk-ant-placeholder-not-used-in-v1
 
       # LLM provider for caption assist and the assistant/composer.
-      # "gemini" or "claude". Set GEMINI_API_KEY in the dashboard when using
-      # gemini - never in this file.
+      # "nvidia", "gemini" or "claude". Set the matching *_API_KEY in the
+      # dashboard when using that provider - never in this file.
       - key: LLM_PROVIDER
-        value: gemini
+        value: nvidia
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_MODEL
+        value: meta/muse-glimmer-30b
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
