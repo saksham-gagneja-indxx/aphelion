@@ -132,7 +132,7 @@ function ProductPreview() {
           </span>
           <span className="ml-auto hidden shrink-0 items-center gap-2 text-[14px] text-mist-200 sm:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-            LinkedIn connected
+            {' '}LinkedIn connected
           </span>
         </div>
 
@@ -255,7 +255,7 @@ export default function Landing() {
         <div className="animate-rise flex max-w-full flex-wrap items-center justify-center gap-3 rounded-lg py-1.5 pr-4 pl-1.5">
           <span className={`${EYEBROW} inline-flex items-center gap-2 bg-violet-900 px-2.5 py-1 text-violet-200 rounded-lg`}>
             <span className="animate-blink h-1.5 w-1.5 rounded-full bg-white" />
-            Live
+            {' '}Live
           </span>
           <span className="text-[15px] text-mist-200">
             With Integrated Linkedin OAuth Channels
