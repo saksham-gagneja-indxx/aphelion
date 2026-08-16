@@ -83,6 +83,58 @@ function PublicShell({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Floating page-nav, docked to the bottom of the viewport.
+ *
+ * Moved out of the header on request: a snackbar-style bar rather than a top
+ * nav row. Slight radius only on this element — the rest of the system is
+ * square by design (see GridBackdrop's header comment), so rounding it here
+ * is a deliberate one-off, not a drift in the system.
+ */
+function BottomNav({
+  navItems,
+  pendingApprovals,
+}: {
+  navItems: { to: string; label: string }[]
+  pendingApprovals: number
+}) {
+  return (
+    <nav
+      aria-label="Primary"
+      className="fixed inset-x-0 bottom-5 z-30 flex justify-center px-4"
+    >
+      <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-line bg-ink-900/95 px-2 py-2 shadow-lg backdrop-blur">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            /* Active is a violet fill here rather than the underline the old
+               top-row nav used — the bar floats over content, so a border on
+               its own bottom edge would not read the same way. */
+            className={({ isActive }) =>
+              `flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-[14px] whitespace-nowrap transition ${
+                isActive
+                  ? 'bg-violet-500 text-mist-50'
+                  : 'text-mist-500 hover:bg-ink-800 hover:text-mist-50'
+              }`
+            }
+          >
+            {item.label}
+            {item.to === '/admin' && pendingApprovals > 0 && (
+              <span
+                title={`${pendingApprovals} account(s) waiting for approval`}
+                className="inline-flex min-w-[18px] items-center justify-center rounded-full border border-violet-500/50 bg-violet-900 px-1 text-[12px] text-violet-200"
+              >
+                {pendingApprovals}
+              </span>
+            )}
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
 function UserMenu({ user }: { user: User }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -366,47 +418,14 @@ function Shell({
       <GridBackdrop />
 
       <header className="sticky top-0 z-20 border-b border-line bg-ink-950">
-        {/* Wraps below ~975px: the six nav items plus the user block do not
-            fit a laptop-narrow window, and a horizontally scrolling header is
-            worse than a two-row one. */}
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-3 px-7 py-4">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
-            <div className="flex items-center gap-2.5">
-              <BoltLogo className="text-violet-500" />
-              <span className="font-display text-[16px] font-medium tracking-[-.01em] whitespace-nowrap text-mist-50">
-                Reel Automation
-              </span>
-            </div>
-            {/* Scrolls within its own bounds. An earlier -mx-7/px-7 edge-bleed
-                made this 3px wider than the viewport, which scrolled the whole
-                document sideways on a phone. */}
-            <nav className="flex max-w-full items-center gap-1 overflow-x-auto">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  /* Active is a violet underline, not a filled chip — the fill
-                     treatment belongs to the primary button alone. */
-                  className={({ isActive }) =>
-                    `flex shrink-0 items-center gap-2 border-b-2 px-3 py-1.5 text-[15px] whitespace-nowrap transition ${
-                      isActive
-                        ? 'border-violet-500 text-mist-50'
-                        : 'border-transparent text-mist-500 hover:text-mist-50'
-                    }`
-                  }
-                >
-                  {item.label}
-                  {item.to === '/admin' && pendingApprovals > 0 && (
-                    <span
-                      title={`${pendingApprovals} account(s) waiting for approval`}
-                      className="inline-flex min-w-[18px] items-center justify-center border border-violet-500/50 bg-violet-900 px-1 text-[12px] text-violet-200"
-                    >
-                      {pendingApprovals}
-                    </span>
-                  )}
-                </NavLink>
-              ))}
-            </nav>
+        {/* Page links moved to the floating BottomNav; this bar is now just
+            identity and the account menu. */}
+        <div className="mx-auto flex max-w-[1280px] items-center justify-between px-7 py-4">
+          <div className="flex items-center gap-2.5">
+            <BoltLogo className="text-violet-500" />
+            <span className="font-display text-[16px] font-medium tracking-[-.01em] whitespace-nowrap text-mist-50">
+              Reel Automation
+            </span>
           </div>
           <UserMenu user={user} />
         </div>
@@ -452,7 +471,11 @@ function Shell({
         )
       )}
 
-      <main className="relative z-10 px-7 pt-14 pb-20">
+      <BottomNav navItems={navItems} pendingApprovals={pendingApprovals} />
+
+      {/* pb-32 rather than pb-20: the floating bar is fixed, not part of
+          flow, so it sits over the last ~6rem of content otherwise. */}
+      <main className="relative z-10 px-7 pt-14 pb-32">
         {/* Every page below reads its user id from here rather than hardcoding
             one, so the tool acts on whoever is actually signed in. */}
         <CurrentUserProvider user={user}>
