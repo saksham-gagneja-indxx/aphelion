@@ -811,7 +811,7 @@ fix, `git revert` on `main`.
 
 ## Testing
 
-193 backend, 35 frontend.
+212 backend, 38 frontend.
 
 Backend coverage concentrates on what is genuinely risky:
 

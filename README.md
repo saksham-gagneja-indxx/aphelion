@@ -3,11 +3,15 @@
 Upload a video once, and publish or schedule it to LinkedIn from a single
 dashboard — with roles, approvals, and an audit trail for every post.
 
-**Frontend:** deployed on Vercel · **Backend:** run locally (`python -m backend.app`)
+**Frontend:** Vercel · **Backend:** Render (`render.yaml`), or locally with
+`python -m backend.app`
 
-> Render deployment is switched off — `render.yaml` is commented out. The
-> Vercel build needs `VITE_API_URL` pointing at the backend, and the backend
-> needs that Vercel origin in `CORS_ORIGINS`.
+> Frontend and backend are on different origins, so three settings have to
+> agree or sign-in breaks in ways that do not point at the cause:
+> `VITE_API_URL` on Vercel (inlined at **build** time — changing it needs a
+> redeploy, not a restart), the Vercel origin in `CORS_ORIGINS` on the backend,
+> and `LINKEDIN_REDIRECT_URI` matching the LinkedIn app's authorized redirect
+> URL character for character.
 
 For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
@@ -24,6 +28,8 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Queue — every post from draft to published, with failure reasons | ✅ working |
 | Delete a reel or post, reversible for 15 seconds | ✅ working |
 | Sign in with LinkedIn (OAuth 2.0) | ✅ working |
+| Guest accounts — try it without LinkedIn, cannot publish | ✅ working |
+| Operations console (`/console`) — scheduler, storage, feature flags | ✅ working |
 | Guided setup that checks each step, including the publish scope | ✅ working |
 | Roles, user approval, admin panel | ✅ working |
 | Audit log (who published what, when) | ✅ working |
@@ -36,7 +42,7 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Automatic thumbnail choice | ✅ working — samples and scores frames instead of grabbing a black one |
 | Reels persist across sign-out, ready for object storage | ✅ working — `MEDIA_BACKEND=local` today |
 
-**Tests:** 193 backend (pytest) + 35 frontend (vitest), all passing. CI runs
+**Tests:** 212 backend (pytest) + 38 frontend (vitest), all passing. CI runs
 both on every push to `main`.
 
 ---
@@ -189,7 +195,7 @@ approving from the Admin panel.
 ### Tests
 
 ```bash
-pytest tests/ -q                 # 193 backend tests
+pytest tests/ -q                 # 212 backend tests
 cd frontend
 npx tsc --noEmit                 # types
 npx vitest run                   # 35 frontend tests
@@ -230,11 +236,55 @@ Other commands:
 python -m backend.admin_cli promote <id|email>
 python -m backend.admin_cli demote  <id|email>   # refuses the last admin
 python -m backend.admin_cli sign-out-all --yes   # rotates SECRET_KEY
+python -m backend.admin_cli purge-guests --yes
 ```
 
 `sign-out-all` works because session tokens are stateless and signed with
 `SECRET_KEY` — there is no session table to clear, so rotating the key is what
 invalidates every issued token at once.
+
+---
+
+## Guest accounts
+
+A visitor can try the tool without a LinkedIn account. A guest is an ordinary
+account with an ordinary session — not a bypass — and every existing guard
+applies to it unchanged. What makes it safe to offer publicly is what it
+cannot reach:
+
+- **Cannot publish.** Publishing acts on a real LinkedIn profile, and a guest
+  has not proved they own one. Enforced across the whole publish blueprint, so
+  a route added later is covered by default.
+- **Can never be an administrator.** `User.is_admin()` returns `False` for a
+  guest regardless of the role column, so a guest promoted by a bad migration
+  or a future admin screen still reaches nothing.
+- **Sees only its own data**, through the same ownership guard as everyone.
+
+Each request creates a *new* account rather than sharing one — two people
+trying the tool at once would otherwise see each other's uploads.
+
+Set `ALLOW_GUEST_ACCESS=false` to require LinkedIn for everyone. Guests
+accumulate one row per visitor; clear them from `/console` or with
+`admin_cli purge-guests --yes`.
+
+---
+
+## Two admin surfaces
+
+They answer different questions, so they are different pages:
+
+| | |
+|---|---|
+| **`/admin`** | People. Who exists, what role they hold, who is awaiting approval, and the audit log. |
+| **`/console`** | The deployment. Scheduler state, storage and orphaned files, database counts, feature flags, maintenance. |
+
+Both are restricted to administrators by a blueprint-level guard on the server,
+not only hidden in the UI.
+
+The console reports scheduler **enabled** and scheduler **running** separately.
+On a sleeping free instance the config says yes while the process is not there,
+which looks configured and silently publishes nothing — that gap is the most
+misleading state this system has.
 
 ---
 
@@ -282,9 +332,9 @@ backend/
   utils/        security, config, database, logging, time
 frontend/src/
   api/          typed client modules, upload store
-  pages/        Compose, Queue, Analytics, Setup, Docs, Settings, Admin
+  pages/        Compose, Queue, Analytics, Setup, Docs, Settings, Admin, Console
   components/
-tests/          193 backend tests
+tests/          212 backend tests
 docs/
   ARCHITECTURE.md   everything technical
 Dockerfile      multi-stage: Node builds the SPA, Python serves it

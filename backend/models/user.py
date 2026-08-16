@@ -61,6 +61,12 @@ class User(Base):
     # rather than discovered when a scheduled post fires.
     linkedin_scope = Column(String(500), nullable=True)
 
+    # A try-it-out account created without LinkedIn. Sandboxed rather than
+    # privileged: its own data like any other account, but it can never publish
+    # and can never be an administrator. See is_guest_account() for why those
+    # two limits are enforced from this column rather than from the role.
+    is_guest = Column(Boolean, default=False, nullable=True)
+
     # Account settings
     timezone = Column(String(50), default="Asia/Kolkata")
     account_name = Column(String(255), nullable=True)  # Display name
@@ -97,7 +103,16 @@ class User(Base):
     VALID_ROLES = (ROLE_ADMIN, ROLE_OPERATOR)
 
     def is_admin(self) -> bool:
+        # A guest is never an administrator, whatever the role column says.
+        # Checked here rather than at each call site so that a guest promoted
+        # by accident - by a bad migration, a seeded fixture, or a future admin
+        # screen - still cannot reach anything.
+        if self.is_guest:
+            return False
         return self.role == self.ROLE_ADMIN
+
+    def is_guest_account(self) -> bool:
+        return bool(self.is_guest)
 
     def touch_last_seen(self):
         self.last_seen_at = utcnow()
@@ -111,6 +126,9 @@ class User(Base):
             "avatar_url": self.avatar_url,
             "role": self.role,
             "is_active": self.is_active,
+            # The UI needs this to stop pushing a guest towards LinkedIn setup,
+            # which is the one thing a guest has deliberately not done.
+            "is_guest": bool(self.is_guest),
             "linkedin_connected": self.linkedin_token_valid(),
             "instagram_connected": bool(self.instagram_connected),
             "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,

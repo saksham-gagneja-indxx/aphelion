@@ -266,6 +266,24 @@ def cmd_reset_users(args) -> int:
         db.close()
 
 
+def cmd_purge_guests(args) -> int:
+    """Delete guest accounts, which accumulate one per visitor."""
+    db = get_session()
+    try:
+        guests = db.query(User).filter(User.is_guest.is_(True)).all()
+        if not args.yes:
+            print(f"{len(guests)} guest account(s). Re-run with --yes to delete them.")
+            return 1
+
+        for guest in guests:
+            db.delete(guest)
+        db.commit()
+        print(f"Deleted {len(guests)} guest account(s).")
+        return 0
+    finally:
+        db.close()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m backend.admin_cli",
@@ -294,6 +312,10 @@ def main(argv=None) -> int:
     p = sub.add_parser("reset-users", help="delete all accounts")
     p.add_argument("--yes", action="store_true", help="confirm")
     p.set_defaults(func=cmd_reset_users)
+
+    p = sub.add_parser("purge-guests", help="delete all guest accounts")
+    p.add_argument("--yes", action="store_true", help="confirm")
+    p.set_defaults(func=cmd_purge_guests)
 
     args = parser.parse_args(argv)
     return args.func(args)

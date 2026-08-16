@@ -219,15 +219,24 @@ export default function Compose() {
       <h1 className={H1}>New post</h1>
       <p className={SUB}>Pick a video, write a caption, choose when it goes out.</p>
 
-      {!user.linkedin_connected && (
+      {user.is_guest ? (
         <div className={`${BANNER_QUIET} mt-6`}>
           <p className="text-[15px] text-mist-200">
-            LinkedIn is not connected, so nothing can be published yet.{' '}
-            <Link to="/setup" className="text-violet-300 underline underline-offset-2">
-              Finish setup
-            </Link>
+            Guest account: upload, caption and scheduling all work. Publishing needs
+            LinkedIn, because it posts to a real profile.
           </p>
         </div>
+      ) : (
+        !user.linkedin_connected && (
+          <div className={`${BANNER_QUIET} mt-6`}>
+            <p className="text-[15px] text-mist-200">
+              LinkedIn is not connected, so nothing can be published yet.{' '}
+              <Link to="/setup" className="text-violet-300 underline underline-offset-2">
+                Finish setup
+              </Link>
+            </p>
+          </div>
+        )
       )}
 
       <div className="mt-8 space-y-3">

@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     # at all. Use to close the tool completely once the intended users exist.
     allow_new_signups: bool = Field(default=True, alias="ALLOW_NEW_SIGNUPS")
 
+    # ============ GUEST ACCESS ============
+    # Lets a visitor try the tool without a LinkedIn account. A guest is a real,
+    # ordinary account - not a bypass of anything - created on request and
+    # sandboxed: its own data, no publishing, never an administrator.
+    #
+    # Turn it off to require LinkedIn for everyone.
+    allow_guest_access: bool = Field(default=True, alias="ALLOW_GUEST_ACCESS")
+
     # ============ API AUTHENTICATION ============
     # Bearer token required on every /api/* route. There is no default and no
     # "disabled" mode: if this is unset the app refuses API requests rather
@@ -192,6 +200,11 @@ def admin_allowlist_enabled() -> bool:
     database would claim it. Setting the allowlist closes that permanently.
     """
     return len(admin_subs()) > 0
+
+
+def guest_access_enabled() -> bool:
+    """True when visitors may create a guest account."""
+    return bool(get_settings().allow_guest_access)
 
 
 def linkedin_configured() -> bool:

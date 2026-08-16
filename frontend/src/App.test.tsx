@@ -48,7 +48,8 @@ describe('App routing and auth gate', () => {
     renderWithQuery(
       <MemoryRouter>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
+      { router: false },
     )
 
     await waitFor(() => {
@@ -76,7 +77,8 @@ describe('App routing and auth gate', () => {
     renderWithQuery(
       <MemoryRouter>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
+      { router: false },
     )
 
     await waitFor(() => {
@@ -100,7 +102,8 @@ describe('App routing and auth gate', () => {
     renderWithQuery(
       <MemoryRouter>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
+      { router: false },
     )
 
     await waitFor(() => {

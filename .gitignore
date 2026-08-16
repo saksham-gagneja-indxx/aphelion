@@ -2,6 +2,12 @@
 .env
 .env.local
 .env.*.local
+# Backups written by `python -m backend.admin_cli` before it edits .env. These
+# are full copies of the file, secrets and all — ignoring only .env would leave
+# them committable.
+.env.bak
+.env.*.bak
+.env.backup*
 .venv
 venv/
 ENV/
@@ -60,6 +66,10 @@ data/reels/*
 data/uploads/*
 !data/uploads/.gitkeep
 data/*.db
+# WAL companions. SQLite runs in WAL mode now, so these sit beside the database
+# and are meaningless without it.
+data/*.db-wal
+data/*.db-shm
 data/cache/
 
 # ============ MEDIA ============
