@@ -25,9 +25,17 @@ class Settings(BaseSettings):
     )
     db_echo: bool = Field(default=False, alias="DB_ECHO")
 
-    # ============ CLAUDE API SETTINGS ============
-    claude_api_key: str = Field(alias="CLAUDE_API_KEY")
+    # ============ LLM API SETTINGS ============
+    # Supported providers: "claude" (Anthropic), "gemini" (Google)
+    llm_provider: str = Field(default="gemini", alias="LLM_PROVIDER")
+
+    # Claude (Anthropic) settings
+    claude_api_key: str = Field(default="sk-ant-placeholder", alias="CLAUDE_API_KEY")
     claude_model: str = Field(default="claude-3-5-sonnet-20241022", alias="CLAUDE_MODEL")
+
+    # Gemini (Google) settings
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
 
     # ============ INSTAGRAM SETTINGS ============
     instagram_username: str = Field(alias="INSTAGRAM_USERNAME")

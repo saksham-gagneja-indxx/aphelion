@@ -40,37 +40,22 @@ retention policy nobody has thought about.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
 import pytz
 
-from backend.core.captions import CaptionError, unavailable_reason
+from backend.ai.llm_provider import get_provider
 from backend.utils.config import get_settings
 from backend.utils.logger import get_logger
 
 logger = get_logger("social_media_automation.composer")
 
-# The composer reasons across turns and picks tools, which is more than the
-# caption writer does. Cost is the operator's call, not a default to optimise
-# away here; this constant and EFFORT below are the two knobs.
 MODEL = "claude-opus-5"
-
-# Low effort: each turn is one short reply plus at most a couple of tool calls,
-# and a chat surface is judged on how quickly it answers. Raise to "medium" if
-# tool selection starts looking careless.
 EFFORT = "low"
-
 MAX_TOKENS = 2048
-
-# A turn that has not settled after this many tool rounds is looping. Four is
-# comfortably more than "pick a reel, write a caption, set a time".
 MAX_TOOL_ROUNDS = 4
-
-# Guard rails on what the client may post back. A transcript is unbounded by
-# nature; these keep one turn's cost and latency bounded.
 MAX_TURNS = 40
 MAX_MESSAGE_CHARS = 4000
 
@@ -297,6 +282,8 @@ def run_turn(
 
     `messages` is the whole conversation so far, oldest first, each
     {role: 'user'|'assistant', content: str}.
+
+    Delegates to the configured LLM provider (Claude or Gemini).
     """
     if not messages:
         raise ComposerError("Nothing to respond to.", status=400)
@@ -310,94 +297,17 @@ def run_turn(
         if len(m.get("content") or "") > MAX_MESSAGE_CHARS:
             raise ComposerError("That message is too long.", status=400)
 
-    reason = unavailable_reason()
+    provider = get_provider()
+    reason = provider.unavailable_reason()
     if reason:
         raise ComposerError(reason, status=503)
 
     try:
-        import anthropic
-    except ImportError:
+        return provider.run_composer_turn(messages, draft, reels, tz_name, thumbnail)
+    except ComposerError:
+        raise
+    except Exception as e:
+        logger.error(f"Composer error: {str(e)}")
         raise ComposerError(
-            "The anthropic package is not installed on the server.", status=503
+            f"Composer failed: {str(e)[:100]}", status=502
         )
-
-    settings = get_settings()
-    # CLAUDE_API_KEY is the setting; the SDK looks for ANTHROPIC_API_KEY. Pass
-    # it explicitly or the failure points at Anthropic instead of at config.
-    client = anthropic.Anthropic(api_key=settings.claude_api_key)
-
-    draft = dict(draft or empty_draft())
-    reel_names = [r.get("filename") for r in reels if r.get("filename")]
-
-    convo: List[dict] = []
-    for i, m in enumerate(messages):
-        role = "assistant" if m.get("role") == "assistant" else "user"
-        content = m.get("content") or ""
-        # The situation rides on the first user turn rather than in the system
-        # prompt: it changes every request, and keeping volatile text out of
-        # the cached prefix is the difference between a cache hit and a miss.
-        if i == 0 and role == "user":
-            content = f"{_context_block(reels, tz_name)}\n\n---\n\n{content}"
-        convo.append({"role": role, "content": content})
-
-    tool_notes: List[str] = []
-
-    for _ in range(MAX_TOOL_ROUNDS):
-        try:
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                system=SYSTEM,
-                tools=TOOLS,
-                output_config={"effort": EFFORT},
-                messages=convo,
-            )
-        except anthropic.AuthenticationError:
-            raise ComposerError("Anthropic rejected the API key.", status=502)
-        except anthropic.RateLimitError:
-            raise ComposerError("Rate limited by Anthropic. Try again shortly.", status=429)
-        except anthropic.APIConnectionError:
-            raise ComposerError("Could not reach Anthropic.", status=502)
-        except anthropic.APIStatusError as e:
-            logger.error(f"Anthropic {e.status_code}: {e.message}")
-            raise ComposerError(f"Upstream error ({e.status_code}).", status=502)
-
-        if response.stop_reason == "refusal":
-            raise ComposerError("Claude declined to answer that.", status=422)
-
-        text = "".join(b.text for b in response.content if b.type == "text").strip()
-        tool_uses = [b for b in response.content if b.type == "tool_use"]
-
-        if not tool_uses:
-            return {
-                "reply": text,
-                "draft": draft,
-                "ready": bool(draft["reel_filename"] and draft["caption"] and draft["when"]),
-                "actions": tool_notes,
-            }
-
-        convo.append({"role": "assistant", "content": response.content})
-        results = []
-        for tu in tool_uses:
-            outcome = _apply_tool(tu.name, tu.input or {}, draft, reel_names, tz_name)
-            tool_notes.append(outcome)
-            logger.info(f"composer tool {tu.name}: {outcome}")
-            results.append(
-                {"type": "tool_result", "tool_use_id": tu.id, "content": outcome}
-            )
-        # All results in one user message: splitting them teaches the model to
-        # stop making parallel calls.
-        convo.append({"role": "user", "content": results})
-
-    # Out of rounds. The draft still holds whatever landed, so the turn is not
-    # wasted — the user sees the partial result and can nudge it.
-    logger.warning("Composer hit the tool-round ceiling")
-    return {
-        "reply": (
-            "I got partway there but kept going in circles. Here is what I have "
-            "— tell me what to change."
-        ),
-        "draft": draft,
-        "ready": bool(draft["reel_filename"] and draft["caption"] and draft["when"]),
-        "actions": tool_notes,
-    }
