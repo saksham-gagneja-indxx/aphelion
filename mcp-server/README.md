@@ -38,50 +38,14 @@ beyond whatever the calling client does.
 
 ## Setup
 
-### 1. GitHub OAuth App
+**[👉 Follow SETUP.md](SETUP.md)** for step-by-step instructions.
 
-Create one at [github.com/settings/developers](https://github.com/settings/developers):
-
-- Homepage URL: `https://post-pilot.reel-automation-mcp.workers.dev`
-- Authorization callback URL: `https://post-pilot.reel-automation-mcp.workers.dev/callback`
-
-### 2. KV namespace
-
-```bash
-npx wrangler kv namespace create OAUTH_KV
-```
-
-Paste the returned id into `wrangler.jsonc`'s `kv_namespaces[0].id`.
-
-### 3. Secrets
-
-```bash
-npx wrangler secret put GITHUB_CLIENT_ID
-npx wrangler secret put GITHUB_CLIENT_SECRET
-npx wrangler secret put COOKIE_ENCRYPTION_KEY        # openssl rand -hex 32
-npx wrangler secret put BACKEND_API_URL              # e.g. https://social-media-manager-api-wk5g.onrender.com
-npx wrangler secret put BACKEND_API_KEY              # same value as API_ACCESS_KEY on the Render service
-npx wrangler secret put BACKEND_USER_ID              # the numeric id of the LinkedIn-connected account to act as
-npx wrangler secret put ALLOWED_GITHUB_USERNAMES     # comma-separated GitHub usernames, e.g. "you,teammate"
-```
-
-### 4. Deploy
-
-```bash
-npm install
-npx wrangler deploy
-```
-
-### 5. Register as a connector
-
-In Claude Cowork or claude.ai's connector settings, add:
-
-```
-https://post-pilot.reel-automation-mcp.workers.dev/mcp
-```
-
-The first connection triggers the GitHub OAuth flow; only allowlisted usernames
-get real tools past that point.
+Takes 15 minutes. Covers:
+- Cloudflare login & KV namespace
+- GitHub OAuth app creation
+- Setting 7 secrets
+- Deploying the Worker
+- Registering in Claude Code / Desktop / Cowork
 
 ## Local development
 
@@ -90,9 +54,7 @@ npx wrangler dev
 ```
 
 Needs a second GitHub OAuth App with callback `http://localhost:8788/callback`,
-and a `.dev.vars` file (gitignored) with the same secrets as above, plus
-`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` for the local app. Point it at the
-Render backend or a local `python -m backend.app` via `BACKEND_API_URL`.
+and a `.dev.vars` file (gitignored) with the same secrets listed in SETUP.md.
 
 Test with the MCP Inspector:
 
