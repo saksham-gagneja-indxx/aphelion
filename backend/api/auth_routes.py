@@ -44,6 +44,7 @@ from backend.utils.config import (
     admin_allowlist_enabled,
     get_settings,
     is_admin_sub,
+    is_placeholder,
     linkedin_configured,
 )
 from backend.utils.database import get_session
@@ -129,11 +130,15 @@ def _frontend_url(status: str, token: str = None) -> str:
     return url
 
 
-def _authorize_url(user_id: int) -> str:
+def _authorize_url(user_id: int, client_id: Optional[str] = None) -> str:
+    """`client_id` overrides the server's own app for a known account that
+    configured its own LinkedIn app (see User.effective_linkedin_client_id).
+    Left unset for the plain sign-in entry point, where there is no account
+    yet to have configured anything."""
     settings = get_settings()
     params = {
         "response_type": "code",
-        "client_id": settings.linkedin_client_id,
+        "client_id": client_id or settings.linkedin_client_id,
         "redirect_uri": settings.linkedin_redirect_uri,
         "state": make_oauth_state(user_id),
         "scope": SCOPES,
@@ -141,7 +146,7 @@ def _authorize_url(user_id: int) -> str:
     return f"{AUTHORIZE_URL}?{urlencode(params)}"
 
 
-def _authorize_response(user_id: int):
+def _authorize_response(user_id: int, client_id: Optional[str] = None):
     """Send the caller to LinkedIn, or hand back the URL for it to open itself.
 
     `?format=json` exists because /start requires a bearer token, and a
@@ -149,7 +154,7 @@ def _authorize_response(user_id: int):
     fetches the URL through apiFetch instead and opens it in a new tab, which
     also leaves the current page intact while the member consents.
     """
-    url = _authorize_url(user_id)
+    url = _authorize_url(user_id, client_id=client_id)
     if request.args.get("format") == "json":
         return jsonify({"url": url}), 200
     return redirect(url)
@@ -167,19 +172,32 @@ def linkedin_login():
 
 @auth_bp.route("/auth/linkedin/start", methods=["GET"])
 def linkedin_start():
-    """Re-connect LinkedIn for the signed-in user (e.g. after token expiry)."""
-    if not linkedin_configured():
-        return jsonify({"error": "LinkedIn is not configured."}), 503
+    """Re-connect LinkedIn for the signed-in user (e.g. after token expiry).
 
+    Uses the account's own LinkedIn app if it configured one (see
+    User.effective_linkedin_client_id); otherwise falls back to the server's
+    app, same as before per-user credentials existed. A machine caller with no
+    account on record has neither, so it is restricted to the server-wide
+    check below.
+    """
     user = current_user()
     if user is None:
         # A machine caller has no identity to reconnect; require an explicit id.
         user_id = request.args.get("user_id", type=int)
         if not user_id:
             return jsonify({"error": "user_id is required for machine callers"}), 400
+        if not linkedin_configured():
+            return jsonify({"error": "LinkedIn is not configured."}), 503
         return _authorize_response(user_id)
 
-    return _authorize_response(user.id)
+    client_id = user.effective_linkedin_client_id()
+    if not client_id or is_placeholder(client_id):
+        return jsonify({
+            "error": "LinkedIn is not configured. Add your own LinkedIn app "
+                     "in Setup, or ask an administrator to configure one."
+        }), 503
+
+    return _authorize_response(user.id, client_id=client_id)
 
 
 @auth_bp.route("/auth/linkedin/callback", methods=["GET"])
@@ -206,14 +224,30 @@ def linkedin_callback():
 
     settings = get_settings()
 
+    # The token exchange must present the SAME app credentials that were used
+    # to build the authorize URL - LinkedIn issued the code to a specific
+    # client_id. For a reconnect (state carries a real user id) that may be
+    # the account's own app; a plain sign-in has no account yet and always
+    # uses the server's.
+    client_id, client_secret = settings.linkedin_client_id, settings.linkedin_client_secret
+    if state_user_id != LOGIN_USER_ID:
+        _db_for_creds = get_session()
+        try:
+            _target = _db_for_creds.query(User).filter(User.id == state_user_id).first()
+            if _target is not None:
+                client_id = _target.effective_linkedin_client_id()
+                client_secret = _target.effective_linkedin_client_secret()
+        finally:
+            _db_for_creds.close()
+
     try:
         token_response = requests.post(
             TOKEN_URL,
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "client_id": settings.linkedin_client_id,
-                "client_secret": settings.linkedin_client_secret,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "redirect_uri": settings.linkedin_redirect_uri,
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -375,6 +409,118 @@ def _resolve_user(db, state_user_id: int, subject: str, userinfo: dict):
     return user, True
 
 
+def _resolve_clerk_user(db, clerk_id: str, profile: dict):
+    """Find or create the account behind a verified Clerk identity.
+
+    Mirrors _resolve_user's admin/allowlist logic but keyed on `clerk_id`
+    instead of `linkedin_sub`, and with one deliberate difference: Clerk
+    accounts are active immediately rather than pending approval. Clerk has
+    already gated sign-up (verified email or an OAuth provider); the
+    LinkedIn-login pending-approval gate exists because THAT endpoint is
+    reachable by anyone with no verification at all.
+
+    Returns (user, was_created).
+    """
+    from backend.utils.config import admin_clerk_emails, is_admin_clerk_email
+
+    email = profile.get("email")
+    is_admin_email = is_admin_clerk_email(email)
+    role_claim = (profile.get("public_metadata") or {}).get("role")
+
+    user = db.query(User).filter(User.clerk_id == clerk_id).first()
+    if user is not None:
+        # Self-healing, same reasoning as the LinkedIn allowlist: if the
+        # database is reset or the role edited by hand, the intended admin
+        # is restored on next sign-in.
+        should_be_admin = is_admin_email or role_claim == User.ROLE_ADMIN
+        if should_be_admin and user.role != User.ROLE_ADMIN:
+            logger.info(f"Restoring admin role for Clerk account {user.id}")
+            user.role = User.ROLE_ADMIN
+        user.full_name = profile.get("name") or user.full_name
+        user.email = email or user.email
+        user.avatar_url = profile.get("avatar_url") or user.avatar_url
+        if not user.is_active:
+            user.is_active = True
+        return user, False
+
+    # Same bootstrap as the LinkedIn path: with ADMIN_CLERK_EMAILS unset and no
+    # existing account at all (of either provider), the very first sign-in
+    # becomes an admin so the tool has someone who can approve/administer it.
+    # Every account after that is a plain operator unless explicitly
+    # allowlisted. Sound because whoever runs the deploy is whoever signs in
+    # first - the same assumption the LinkedIn bootstrap already makes.
+    is_first_user_ever = not admin_clerk_emails() and db.query(User).count() == 0
+
+    should_be_admin = is_admin_email or role_claim == User.ROLE_ADMIN or is_first_user_ever
+    role = User.ROLE_ADMIN if should_be_admin else User.ROLE_OPERATOR
+
+    user = User(
+        clerk_id=clerk_id,
+        full_name=profile.get("name"),
+        email=email,
+        avatar_url=profile.get("avatar_url"),
+        role=role,
+        is_active=True,
+        timezone=get_settings().timezone,
+    )
+    db.add(user)
+    db.flush()
+
+    logger.info(f"Created Clerk account {user.id} ({user.full_name}) role={user.role}")
+    return user, True
+
+
+@auth_bp.route("/auth/clerk/verify", methods=["POST"])
+def clerk_verify():
+    """Exchange a verified Clerk session token for this app's own session token.
+
+    Public: the caller has no app session yet, by definition. Safe because
+    nothing is trusted until the token verifies against Clerk's JWKS - see
+    backend/utils/clerk_auth.py. The app's own session token, once minted,
+    behaves identically to one issued via LinkedIn: same signature, same
+    is_active check on every request, same admin/audit/ownership logic.
+    """
+    from backend.utils.clerk_auth import ClerkVerificationError, verify_and_fetch
+    from backend.utils.config import clerk_configured
+
+    if not clerk_configured():
+        return jsonify({"error": "Clerk sign-in is not configured on this server."}), 503
+
+    body = request.get_json(silent=True) or {}
+    token = body.get("token")
+    if not token:
+        return jsonify({"error": "token is required."}), 400
+
+    try:
+        clerk_id, profile = verify_and_fetch(token)
+    except ClerkVerificationError as e:
+        logger.warning(f"Clerk verification rejected: {e}")
+        return jsonify({"error": "Could not verify sign-in."}), 401
+
+    db = get_session()
+    try:
+        user, created = _resolve_clerk_user(db, clerk_id, profile)
+
+        audit(
+            db,
+            action="user.signed_up" if created else "user.signed_in",
+            actor=user,
+            target=f"user:{user.id}",
+            detail=f"role={user.role} via=clerk",
+            ip_address=request.remote_addr,
+        )
+        db.commit()
+
+        db.refresh(user)
+        identity = user.to_identity()
+        session_token = make_session_token(user.id)
+    finally:
+        db.close()
+
+    logger.info(f"✅ Signed in via Clerk: {identity['name']} (id={identity['id']}, {identity['role']})")
+    return jsonify({"token": session_token, "user": identity}), 200
+
+
 @auth_bp.route("/me", methods=["GET"])
 def me():
     """Identity of the caller. The SPA gates the whole app on this."""
@@ -475,21 +621,33 @@ def setup_state():
         return jsonify({"error": "No user session."}), 401
 
     settings = get_settings()
-    app_ready = linkedin_configured()
+    # Done via EITHER path: the server's shared app, or this account's own -
+    # see User.effective_linkedin_client_id. An account that brought its own
+    # app is never blocked on an administrator finishing server-side setup.
+    app_ready = linkedin_configured() or user.has_own_linkedin_app()
     connected = user.linkedin_token_valid()
     can_publish = user.can_publish_to_linkedin()
+
+    if app_ready:
+        app_detail = None
+    elif user.is_admin():
+        app_detail = (
+            "LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET are not set on "
+            "the server. Set them, or add your own app below."
+        )
+    else:
+        app_detail = (
+            "No app is configured for your account yet. Add your own "
+            "LinkedIn app below, or ask an administrator to finish server "
+            "setup."
+        )
 
     steps = [
         {
             "id": "app",
             "title": "Register a LinkedIn app",
             "done": app_ready,
-            # Only useful while it is NOT done, and it names a server-side
-            # setting, so it is withheld from non-admins.
-            "detail": None if app_ready else (
-                "LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET are not set on "
-                "the server."
-            ) if user.is_admin() else "Ask an administrator to finish server setup.",
+            "detail": app_detail,
         },
         {
             "id": "redirect",
@@ -522,6 +680,8 @@ def setup_state():
         "complete": all(s["done"] for s in steps),
         "redirect_uri": settings.linkedin_redirect_uri,
         "is_admin": user.is_admin(),
+        "has_own_linkedin_app": user.has_own_linkedin_app(),
+        "own_linkedin_client_id": user.linkedin_own_client_id,
     }), 200
 
 

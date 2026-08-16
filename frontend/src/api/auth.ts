@@ -71,6 +71,30 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   return res
 }
 
+/** True when this deployment has a Clerk publishable key configured. Gates
+ *  whether Clerk's components/hooks are mounted at all - see main.tsx. */
+export const CLERK_ENABLED = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
+
+/**
+ * Exchange a verified Clerk session token for this app's own session token.
+ *
+ * The backend re-verifies the token against Clerk's JWKS before trusting
+ * anything in it - this call carries no other credential and needs none.
+ * On success the app token is stored under the same key everything else in
+ * this module reads, so nothing downstream needs to know Clerk exists.
+ */
+export async function bridgeClerkSession(clerkToken: string): Promise<User> {
+  const res = await fetch(`${API_BASE}/api/auth/clerk/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: clerkToken }),
+  })
+  if (!res.ok) throw await toError(res)
+  const body = (await res.json()) as { token: string; user: User }
+  localStorage.setItem(SESSION_KEY, body.token)
+  return body.user
+}
+
 export async function getMe(): Promise<User> {
   const res = await apiFetch('/api/me')
   if (!res.ok) {
@@ -123,6 +147,24 @@ export interface SetupState {
   complete: boolean
   redirect_uri: string
   is_admin: boolean
+  has_own_linkedin_app: boolean
+  own_linkedin_client_id: string | null
+}
+
+/** Save this account's own LinkedIn app credentials (see backend/api/integrations_routes.py). */
+export async function saveLinkedInCredentials(clientId: string, clientSecret: string): Promise<void> {
+  const res = await apiFetch('/api/integrations/linkedin/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+  })
+  if (!res.ok) throw await toError(res)
+}
+
+/** Drop this account's own app and fall back to the server's shared one. */
+export async function clearLinkedInCredentials(): Promise<void> {
+  const res = await apiFetch('/api/integrations/linkedin/credentials', { method: 'DELETE' })
+  if (!res.ok) throw await toError(res)
 }
 
 /** Whether this server offers guest accounts. */

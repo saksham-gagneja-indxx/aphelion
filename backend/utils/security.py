@@ -58,6 +58,11 @@ PUBLIC_PATHS = {
     # never be an administrator. See backend/api/guest_routes.py.
     "/api/auth/guest",
     "/api/auth/guest/status",
+    # Clerk sign-in bridge. Necessarily public for the same reason as the
+    # LinkedIn login entry point - the caller has no app session token yet.
+    # It is protected instead by verifying the Clerk-issued JWT in the body
+    # against Clerk's own JWKS before anything is looked up or created.
+    "/api/auth/clerk/verify",
 }
 
 # How long a minted authorize URL stays valid. Long enough to click through a

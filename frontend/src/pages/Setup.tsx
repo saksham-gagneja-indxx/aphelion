@@ -12,17 +12,117 @@
  * asking them to confirm something the app can find out for itself.
  */
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
+  clearLinkedInCredentials,
   getLinkedInAuthorizeUrl,
   getSetupState,
   linkedInLoginUrl,
   openBlankTab,
+  saveLinkedInCredentials,
   type SetupStep,
 } from '../api/auth'
 import { QueryError, QueryPending } from '../components/QueryStates'
-import { BTN_PRIMARY, BTN_QUIET, H1, H2, SUB } from '../ui'
+import { BTN_OUTLINE, BTN_PRIMARY, BTN_QUIET, FIELD, H1, H2, LABEL, SUB } from '../ui'
+
+/**
+ * Bring-your-own-LinkedIn-app form.
+ *
+ * The other half of the "app" step: instead of waiting on an administrator to
+ * finish server-side setup, any account can paste its own Client ID/Secret
+ * and publish through that instead. Saved encrypted (backend/utils/crypto.py)
+ * and never echoed back - only the client id, which is not secret, is shown
+ * once saved.
+ */
+function OwnAppForm({
+  hasOwnApp,
+  ownClientId,
+  onChanged,
+}: {
+  hasOwnApp: boolean
+  ownClientId: string | null
+  onChanged: () => void
+}) {
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (hasOwnApp) {
+    return (
+      <div className="mt-4 border border-line bg-ink-800 px-4 py-3.5">
+        <p className="text-[15px] text-mist-200">
+          Using your own app <span className="text-mist-500">({ownClientId})</span>
+        </p>
+        <button
+          type="button"
+          className={`${BTN_QUIET} mt-2`}
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            setError(null)
+            void clearLinkedInCredentials()
+              .then(onChanged)
+              .catch((err: Error) => setError(err.message))
+              .finally(() => setBusy(false))
+          }}
+        >
+          {busy ? 'Removing…' : 'Remove and use the shared app instead'}
+        </button>
+        {error && <p className="mt-2 text-[14px] text-danger-soft">{error}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className="mt-4 space-y-3 border border-line bg-ink-800 px-4 py-4"
+      onSubmit={(e) => {
+        e.preventDefault()
+        setBusy(true)
+        setError(null)
+        void saveLinkedInCredentials(clientId.trim(), clientSecret.trim())
+          .then(() => {
+            setClientId('')
+            setClientSecret('')
+            onChanged()
+          })
+          .catch((err: Error) => setError(err.message))
+          .finally(() => setBusy(false))
+      }}
+    >
+      <p className="text-[14px] text-mist-500">
+        Or bring your own app instead of waiting on the server-wide one:
+      </p>
+      <div>
+        <label className={LABEL} htmlFor="own-client-id">Client ID</label>
+        <input
+          id="own-client-id"
+          className={FIELD}
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          required
+        />
+      </div>
+      <div>
+        <label className={LABEL} htmlFor="own-client-secret">Client Secret</label>
+        <input
+          id="own-client-secret"
+          type="password"
+          className={FIELD}
+          value={clientSecret}
+          onChange={(e) => setClientSecret(e.target.value)}
+          required
+        />
+      </div>
+      {error && <p className="text-[14px] text-danger-soft">{error}</p>}
+      <button type="submit" disabled={busy} className={BTN_OUTLINE}>
+        {busy ? 'Saving…' : 'Save my app'}
+      </button>
+    </form>
+  )
+}
 
 /** Copyable one-liner — the redirect URL has to match character for character. */
 function Copyable({ value }: { value: string }) {
@@ -81,12 +181,18 @@ function StepBody({
   isAdmin,
   onConnect,
   connecting,
+  hasOwnApp,
+  ownClientId,
+  onOwnAppChanged,
 }: {
   step: SetupStep
   redirectUri: string
   isAdmin: boolean
   onConnect: () => void
   connecting: boolean
+  hasOwnApp: boolean
+  ownClientId: string | null
+  onOwnAppChanged: () => void
 }) {
   const text = 'text-[15px] leading-[1.65] text-mist-500'
   const strong = 'text-mist-200'
@@ -126,6 +232,7 @@ function StepBody({
               </a>
             </>
           )}
+          <OwnAppForm hasOwnApp={hasOwnApp} ownClientId={ownClientId} onChanged={onOwnAppChanged} />
         </div>
       )
 
@@ -194,6 +301,7 @@ function StepBody({
 export default function Setup() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
   const query = useQuery({
     queryKey: ['setup', 'state'],
@@ -294,6 +402,11 @@ export default function Setup() {
                             isAdmin={query.data.is_admin}
                             onConnect={() => void handleConnect()}
                             connecting={connecting}
+                            hasOwnApp={query.data.has_own_linkedin_app}
+                            ownClientId={query.data.own_linkedin_client_id}
+                            onOwnAppChanged={() =>
+                              void queryClient.invalidateQueries({ queryKey: ['setup', 'state'] })
+                            }
                           />
                         </div>
                       )}

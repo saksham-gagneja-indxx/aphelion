@@ -3,6 +3,8 @@ User model for Social Media Automation Agent
 Stores Instagram and LinkedIn account information
 """
 
+from typing import Optional
+
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -24,6 +26,13 @@ class User(Base):
     # same person signing in twice never produces a duplicate record.
     # Nullable because legacy rows predate SSO; unique so it cannot collide.
     linkedin_sub = Column(String(255), unique=True, index=True, nullable=True)
+
+    # Clerk's stable user id. The identity source for anyone who signed in
+    # through Clerk rather than the legacy LinkedIn-as-login flow; the two are
+    # independent columns so an account can in principle carry both (Clerk for
+    # sign-in, LinkedIn purely for publish rights) without collision.
+    clerk_id = Column(String(255), unique=True, index=True, nullable=True)
+
     full_name = Column(String(255), nullable=True)
     email = Column(String(255), nullable=True, index=True)
     avatar_url = Column(String(1000), nullable=True)
@@ -60,6 +69,18 @@ class User(Base):
     # fails on a missing w_member_social. This lets that be said up front
     # rather than discovered when a scheduled post fires.
     linkedin_scope = Column(String(500), nullable=True)
+
+    # Per-user LinkedIn app credentials. Optional: when unset, the account
+    # publishes through the operator's own app (LINKEDIN_CLIENT_ID/SECRET in
+    # the server environment), same as before this column existed. Set, they
+    # take over entirely for THIS account so each user can bring their own
+    # LinkedIn developer app rather than sharing one.
+    #
+    # The secret is Fernet-encrypted (backend/utils/crypto.py) before it ever
+    # reaches the database; the client id is not secret and is stored plain so
+    # the setup UI can display it back without a decrypt round trip.
+    linkedin_own_client_id = Column(String(255), nullable=True)
+    linkedin_own_client_secret_encrypted = Column(String(1000), nullable=True)
 
     # A try-it-out account created without LinkedIn. Sandboxed rather than
     # privileged: its own data like any other account, but it can never publish
@@ -132,6 +153,7 @@ class User(Base):
             "linkedin_connected": self.linkedin_token_valid(),
             "instagram_connected": bool(self.instagram_connected),
             "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+            "has_own_linkedin_app": self.has_own_linkedin_app(),
         }
 
     def to_admin_dict(self, post_count: int = 0) -> dict:
@@ -234,3 +256,37 @@ class User(Base):
             self.preferences = {}
         self.preferences.update(preferences)
         self.updated_at = utcnow()
+
+    # ---- Per-user LinkedIn app credentials ------------------------------
+
+    def has_own_linkedin_app(self) -> bool:
+        return bool(self.linkedin_own_client_id and self.linkedin_own_client_secret_encrypted)
+
+    def set_own_linkedin_app(self, client_id: str, client_secret: str) -> None:
+        from backend.utils.crypto import encrypt_secret
+
+        self.linkedin_own_client_id = client_id
+        self.linkedin_own_client_secret_encrypted = encrypt_secret(client_secret)
+        self.updated_at = utcnow()
+
+    def clear_own_linkedin_app(self) -> None:
+        self.linkedin_own_client_id = None
+        self.linkedin_own_client_secret_encrypted = None
+        self.updated_at = utcnow()
+
+    def effective_linkedin_client_id(self) -> Optional[str]:
+        """This account's own app id if configured, else the server's."""
+        if self.linkedin_own_client_id:
+            return self.linkedin_own_client_id
+        from backend.utils.config import get_settings
+
+        return get_settings().linkedin_client_id
+
+    def effective_linkedin_client_secret(self) -> Optional[str]:
+        if self.linkedin_own_client_secret_encrypted:
+            from backend.utils.crypto import decrypt_secret
+
+            return decrypt_secret(self.linkedin_own_client_secret_encrypted)
+        from backend.utils.config import get_settings
+
+        return get_settings().linkedin_client_secret

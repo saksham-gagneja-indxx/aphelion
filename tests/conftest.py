@@ -29,6 +29,7 @@ import pytest
 # string as a boolean, which is how this list first went wrong.
 ISOLATED_ENV_VARS = {
     "ADMIN_LINKEDIN_SUBS": "",
+    "ADMIN_CLERK_EMAILS": "",
     "ALLOW_NEW_SIGNUPS": "true",
     "ALLOW_GUEST_ACCESS": "true",
 }

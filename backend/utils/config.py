@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     flask_port: int = Field(default=5000, alias="FLASK_PORT")
     secret_key: str = Field(default="dev-secret-key-change-in-production", alias="SECRET_KEY")
     debug: bool = Field(default=True, alias="DEBUG")
+    # Optional. See backend/utils/crypto.py - unset falls back to secret_key.
+    encryption_key: str = Field(default="", alias="ENCRYPTION_KEY")
 
     # ============ DATABASE SETTINGS ============
     database_url: str = Field(
@@ -65,6 +67,15 @@ class Settings(BaseSettings):
     # so this is configurable rather than hardcoded at a call site.
     linkedin_api_version: str = Field(default="202607", alias="LINKEDIN_API_VERSION")
 
+    # ============ CLERK AUTHENTICATION ============
+    # Identity provider for the SPA (Google/GitHub/email via Clerk's hosted
+    # sign-in). LinkedIn OAuth is kept alongside it, but scoped down to what it
+    # is actually needed for now: granting publish rights, not proving identity.
+    clerk_secret_key: str = Field(default="", alias="CLERK_SECRET_KEY")
+    # Frontend-only value, but declared here too so validate_settings() can
+    # report it missing without importing the frontend's env.
+    clerk_publishable_key: str = Field(default="", alias="VITE_CLERK_PUBLISHABLE_KEY")
+
     # ============ ADMIN ALLOWLIST ============
     # Comma-separated LinkedIn OIDC subject claims (`sub`) permitted to hold
     # the admin role. When set, this is the ONLY way to become an admin:
@@ -74,6 +85,13 @@ class Settings(BaseSettings):
     # an email (it needs the `email` scope, which we do not request), and an
     # email can be changed by its owner. `sub` is stable and unforgeable.
     admin_linkedin_subs: str = Field(default="", alias="ADMIN_LINKEDIN_SUBS")
+
+    # Same idea, for Clerk sign-in: comma-separated emails permitted to hold
+    # the admin role. Checked against the email Clerk reports for the account,
+    # which Clerk itself has already verified (OAuth provider or a verified
+    # email code) - unlike LinkedIn's `sub`, there is no unverified-email path
+    # to worry about here.
+    admin_clerk_emails: str = Field(default="", alias="ADMIN_CLERK_EMAILS")
 
     # When false, accounts that are not on the admin allowlist cannot sign up
     # at all. Use to close the tool completely once the intended users exist.
@@ -205,6 +223,20 @@ def admin_subs() -> set:
 def is_admin_sub(subject: str) -> bool:
     """True when this LinkedIn identity is on the admin allowlist."""
     return bool(subject) and subject in admin_subs()
+
+
+def clerk_configured() -> bool:
+    """True when Clerk sign-in can actually verify anything."""
+    return not is_placeholder(get_settings().clerk_secret_key)
+
+
+def admin_clerk_emails() -> set:
+    raw = get_settings().admin_clerk_emails or ""
+    return {s.strip().lower() for s in raw.split(",") if s.strip()}
+
+
+def is_admin_clerk_email(email: Optional[str]) -> bool:
+    return bool(email) and email.strip().lower() in admin_clerk_emails()
 
 
 def admin_allowlist_enabled() -> bool:

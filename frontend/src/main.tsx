@@ -1,12 +1,21 @@
-import { StrictMode } from 'react'
+import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
+import { ClerkProvider } from '@clerk/clerk-react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { Analytics } from '@vercel/analytics/react'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './index.css'
+
+// Unset in any environment that hasn't configured Clerk yet: rather than
+// crash the whole app on a missing key, ClerkProviderOrPassthrough (below)
+// skips the provider entirely and the LinkedIn-login path keeps working
+// exactly as it did before Clerk existed.
+const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as
+  | string
+  | undefined
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,16 +43,30 @@ const queryClient = new QueryClient({
 // never erroring - so a stopped backend renders as an endless spinner.
 onlineManager.setOnline(true)
 
+/** Wraps with ClerkProvider only when a publishable key is configured, so a
+ *  deployment that hasn't set one up yet still boots and serves the
+ *  LinkedIn-only sign-in path rather than throwing on a missing key. */
+function ClerkProviderOrPassthrough({ children }: { children: ReactNode }) {
+  if (!CLERK_PUBLISHABLE_KEY) return <>{children}</>
+  return (
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} afterSignOutUrl="/">
+      {children}
+    </ClerkProvider>
+  )
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <App />
-          <SpeedInsights />
-          <Analytics />
-        </BrowserRouter>
-      </QueryClientProvider>
+      <ClerkProviderOrPassthrough>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <App />
+            <SpeedInsights />
+            <Analytics />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </ClerkProviderOrPassthrough>
     </ErrorBoundary>
   </StrictMode>,
 )

@@ -17,8 +17,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { SignInButton, useAuth } from '@clerk/clerk-react'
 import BoltLogo from './BoltLogo'
-import { getGuestEnabled, linkedInLoginUrl, openBlankTab, signInAsGuest } from '../api/auth'
+import {
+  CLERK_ENABLED,
+  bridgeClerkSession,
+  getGuestEnabled,
+  linkedInLoginUrl,
+  openBlankTab,
+  signInAsGuest,
+} from '../api/auth'
 import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW } from '../ui'
 
 const MESSAGES: Record<string, { text: string; type: 'error' | 'info' }> = {
@@ -183,6 +191,66 @@ function ProductPreview() {
   )
 }
 
+/**
+ * Bridges a Clerk sign-in into this app's own session, silently.
+ *
+ * Only ever mounted when CLERK_ENABLED (see the render below), so calling
+ * Clerk's hooks here unconditionally is safe - this component simply does not
+ * exist in a deployment that hasn't configured Clerk.
+ *
+ * Runs once Clerk reports the visitor as signed in: fetches a Clerk session
+ * token, trades it for this app's own token (bridgeClerkSession), and
+ * invalidates the ['me'] query so App swaps the landing page for the app
+ * without a manual reload - the same pattern the guest button uses.
+ */
+function ClerkSessionBridge() {
+  const { isSignedIn, isLoaded, getToken } = useAuth()
+  const queryClient = useQueryClient()
+  const [error, setError] = useState<string | null>(null)
+  const [bridging, setBridging] = useState(false)
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || bridging) return
+
+    let cancelled = false
+    setBridging(true)
+    setError(null)
+    void (async () => {
+      try {
+        const clerkToken = await getToken()
+        if (!clerkToken) throw new Error('Clerk did not return a session token.')
+        await bridgeClerkSession(clerkToken)
+        if (!cancelled) {
+          await queryClient.invalidateQueries({ queryKey: ['me'] })
+        }
+      } catch (err) {
+        if (!cancelled) setError((err as Error).message)
+      } finally {
+        if (!cancelled) setBridging(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only on sign-in state changes
+  }, [isLoaded, isSignedIn])
+
+  if (!isSignedIn) return null
+
+  return (
+    <div className="mt-4 w-full max-w-[560px] text-center text-[14px] text-mist-500">
+      {error ? (
+        <p className={`${BANNER_DANGER} text-danger-soft`}>
+          Could not finish signing you in: {error}
+        </p>
+      ) : (
+        <p>Finishing sign-in…</p>
+      )}
+    </div>
+  )
+}
+
 export default function Landing() {
   const [msg, setMsg] = useState<{ text: string; type: 'error' | 'info' } | null>(null)
   const [guestBusy, setGuestBusy] = useState(false)
@@ -240,12 +308,29 @@ export default function Landing() {
             </Link>
           </div>
           <div className="flex items-center gap-3 scale-[0.8] origin-right">
-            <button type="button" onClick={startSignIn} className={BTN_OUTLINE}>
-              Sign in
-            </button>
-            <button type="button" onClick={startSignIn} className={BTN_PRIMARY}>
-              Start for free
-            </button>
+            {CLERK_ENABLED ? (
+              <>
+                <SignInButton mode="modal">
+                  <button type="button" className={BTN_OUTLINE}>
+                    Sign in
+                  </button>
+                </SignInButton>
+                <SignInButton mode="modal">
+                  <button type="button" className={BTN_PRIMARY}>
+                    Start for free
+                  </button>
+                </SignInButton>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={startSignIn} className={BTN_OUTLINE}>
+                  Sign in
+                </button>
+                <button type="button" onClick={startSignIn} className={BTN_PRIMARY}>
+                  Start for free
+                </button>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -289,11 +374,22 @@ export default function Landing() {
         {/* Sign in starts OAuth — there is no separate signup. Guest is a real
             account, just a sandboxed one; see the note under the buttons. */}
         <div className="animate-rise mt-10 flex w-full max-w-[560px] flex-col items-center justify-center gap-3 [animation-delay:.3s] scale-90">
+          {CLERK_ENABLED && (
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className={`${BTN_PRIMARY} w-full justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
+              >
+                Sign in
+              </button>
+            </SignInButton>
+          )}
+          {CLERK_ENABLED && <ClerkSessionBridge />}
           <div className="flex w-full flex-row items-center justify-center gap-3">
             <button
               type="button"
               onClick={startSignIn}
-              className={`${BTN_PRIMARY} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
+              className={`${CLERK_ENABLED ? BTN_OUTLINE : BTN_PRIMARY} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
             >
               Sign in with LinkedIn
               <svg

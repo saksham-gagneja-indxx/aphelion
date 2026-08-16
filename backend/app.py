@@ -208,6 +208,7 @@ def create_app():
     from backend.api.composer_routes import composer_bp
     from backend.api.guest_routes import guest_bp
     from backend.api.console_routes import console_bp
+    from backend.api.integrations_routes import integrations_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -216,6 +217,7 @@ def create_app():
     app.register_blueprint(composer_bp)
     app.register_blueprint(guest_bp)
     app.register_blueprint(console_bp)
+    app.register_blueprint(integrations_bp)
 
     # Health check endpoint
     @app.route("/health", methods=["GET"])
