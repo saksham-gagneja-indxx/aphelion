@@ -216,11 +216,8 @@ export default function Landing() {
 
       <nav className="relative z-10 border-b border-line">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-4 px-8 py-5">
-          <div className="flex items-center gap-2.5">
-            <BoltLogo width={20} height={19} className="text-violet-500" />
-            <span className="font-display text-[17px] font-medium tracking-[-.01em] text-mist-50">
-              Reel Automation
-            </span>
+          <div aria-label="Reel Automation">
+            <BoltLogo width={26} height={24} className="text-mist-50" />
           </div>
           <div className="hidden items-center gap-8 sm:flex">
             <a href="#product" className="text-[16px] text-mist-500 hover:text-mist-50">
