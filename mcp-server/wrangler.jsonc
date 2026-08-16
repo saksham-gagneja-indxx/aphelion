@@ -4,7 +4,7 @@
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "reel-automation-mcp",
+  "name": "post-pilot",
   "main": "src/index.ts",
   "compatibility_date": "2025-03-10",
   "compatibility_flags": ["nodejs_compat"],
@@ -38,7 +38,7 @@
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",
-      "id": "<Add-KV-ID>"
+      "id": "f3c036f9f0cc423b93f2415270073b30"
     }
   ],
   "observability": {

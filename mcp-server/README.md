@@ -1,7 +1,7 @@
-# Reel Automation MCP server
+# Post Pilot MCP server
 
 A remote [Model Context Protocol](https://modelcontextprotocol.io/introduction) server
-that lets Claude (Cowork, claude.ai, Claude Desktop) drive the Reel Automation app —
+that lets Claude (Cowork, claude.ai, Claude Desktop) drive the Post Pilot app —
 list reels, get caption suggestions, run the posting assistant, and schedule or
 publish a post — without opening the web app.
 
@@ -42,8 +42,8 @@ beyond whatever the calling client does.
 
 Create one at [github.com/settings/developers](https://github.com/settings/developers):
 
-- Homepage URL: `https://reel-automation-mcp.<your-subdomain>.workers.dev`
-- Authorization callback URL: `https://reel-automation-mcp.<your-subdomain>.workers.dev/callback`
+- Homepage URL: `https://post-pilot.reel-automation-mcp.workers.dev`
+- Authorization callback URL: `https://post-pilot.reel-automation-mcp.workers.dev/callback`
 
 ### 2. KV namespace
 
@@ -77,7 +77,7 @@ npx wrangler deploy
 In Claude Cowork or claude.ai's connector settings, add:
 
 ```
-https://reel-automation-mcp.<your-subdomain>.workers.dev/mcp
+https://post-pilot.reel-automation-mcp.workers.dev/mcp
 ```
 
 The first connection triggers the GitHub OAuth flow; only allowlisted usernames
