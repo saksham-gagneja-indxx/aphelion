@@ -102,14 +102,16 @@ function Step({
   muted?: boolean
 }) {
   return (
-    <section className={`surface p-5 transition sm:p-6 ${muted ? 'opacity-55' : ''}`}>
+    <section className="surface p-5 transition sm:p-6">
       <div className="flex items-center gap-3">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-line bg-ink-800 text-[12px] text-violet-300">
           {n}
         </span>
-        <h2 className={EYEBROW}>{title}</h2>
+        <h2 className={`${EYEBROW} !text-white`}>{title}</h2>
       </div>
-      <div className="mt-5">{children}</div>
+      <div className={`mt-5 transition ${muted ? 'opacity-55 pointer-events-none grayscale' : ''}`}>
+        {children}
+      </div>
     </section>
   )
 }

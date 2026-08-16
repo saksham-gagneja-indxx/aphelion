@@ -268,7 +268,7 @@ export default function Landing() {
           Ship <span className="text-violet-500">every reel</span> on time.
         </h1>
 
-        <p className="animate-rise mt-8 max-w-[620px] text-center text-[16px] leading-[1.6] text-pretty text-mist-200 [animation-delay:.2s]">
+        <p className="animate-rise mt-8 max-w-[620px] text-center text-[16px] leading-[1.6] text-pretty text-mist-200/80 [animation-delay:.2s]">
           Drop in a reel, pick a time, walk away. We validate the file, pull a thumbnail, and
           publish through LinkedIn&rsquo;s official API — with a queue that tells you exactly what
           happened, and why.
