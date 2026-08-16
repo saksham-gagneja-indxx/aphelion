@@ -100,6 +100,7 @@ function ProductPreview() {
       status: 'Scheduled',
       caption: 'Three things I learned shipping an OAuth integration in a week',
       when: 'Tue, Aug 18 · 9:00 AM',
+      icon: 'linkedin',
     },
     {
       pill: 'border-violet-500/50 bg-violet-900 text-violet-200',
@@ -107,6 +108,7 @@ function ProductPreview() {
       status: 'Posted',
       caption: 'Behind the scenes: how the byte-range upload actually works',
       when: 'Mon, Aug 17 · 8:02 AM',
+      icon: 'instagram',
     },
   ]
 
@@ -119,13 +121,13 @@ function ProductPreview() {
          past the viewport and drags the whole hero off-screen on phones. */
       className="animate-rise relative mx-auto mt-16 -mb-px w-full max-w-[1060px] min-w-0 scroll-mt-24 [animation-delay:.5s]"
     >
-      <div className="surface border-b-0">
+      <div className="surface border-b-0 rounded-2xl">
         {/* Browser chrome */}
         <div className="flex items-center gap-2.5 border-b border-line px-5 py-3.5">
-          <span className="h-2 w-2 rounded-full bg-line" />
-          <span className="h-2 w-2 rounded-full bg-line" />
-          <span className="h-2 w-2 rounded-full bg-line" />
-          <span className="ml-3 truncate text-[14px] text-mist-500">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
+          <span className="h-2 w-2 shrink-0 rounded-full bg-white" />
+          <span className="ml-1 sm:ml-3 min-w-0 flex-1 truncate text-[14px] text-mist-500">
             app.reelautomation.io / queue
           </span>
           <span className="ml-auto hidden shrink-0 items-center gap-2 text-[14px] text-mist-200 sm:inline-flex">
@@ -137,9 +139,9 @@ function ProductPreview() {
         {/* Stat strip — 1px gaps let the hairline colour show through */}
         <div className="grid grid-cols-3 gap-px bg-line">
           {stats.map((s) => (
-            <div key={s.label} className="bg-ink-900 px-6 py-6">
+            <div key={s.label} className="bg-ink-900 px-3 py-4 sm:px-6 sm:py-6 text-center sm:text-left">
               <div className={EYEBROW}>{s.label}</div>
-              <div className="mt-3 font-display text-[32px] font-light tracking-[-.02em] text-mist-50">
+              <div className="mt-2 sm:mt-3 font-display text-[24px] sm:text-[32px] font-light tracking-[-.02em] text-mist-50">
                 {s.value}
               </div>
             </div>
@@ -150,7 +152,17 @@ function ProductPreview() {
         <div className="flex flex-col gap-px bg-line">
           {rows.map((r) => (
             <div key={r.status} className="flex items-center gap-4 bg-ink-900 px-5 py-4">
-              <div className="h-12 w-9 shrink-0 border border-line bg-ink-800" />
+              <div className="flex h-12 w-9 shrink-0 items-center justify-center border border-line bg-ink-800">
+                {r.icon === 'linkedin' ? (
+                  <svg className="h-4 w-4 text-mist-500" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4 text-mist-500" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                  </svg>
+                )}
+              </div>
               <div className="min-w-0 flex-1">
                 <span
                   className={`inline-flex items-center gap-2 border px-2.5 py-0.5 text-[13px] ${r.pill}`}
@@ -215,7 +227,7 @@ export default function Landing() {
       <HeroBackdrop />
 
       <nav className="relative z-10 border-b border-line">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-4 px-8 py-5">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-y-4 px-4 sm:px-8 py-5">
           <div aria-label="Reel Automation">
             <BoltLogo width={44} height={40} className="text-mist-50" />
           </div>
@@ -238,16 +250,16 @@ export default function Landing() {
         </div>
       </nav>
 
-      <div className="relative z-10 mx-auto flex max-w-[1280px] flex-col items-center px-8 pt-20">
+      <div className="relative z-10 mx-auto flex max-w-[1280px] flex-col items-center px-4 sm:px-8 pt-20">
         {/* Status chip */}
-        <div className="animate-rise flex max-w-full flex-wrap items-center justify-center gap-3 border border-line bg-ink-900 rounded-lg py-1.5 pr-4 pl-1.5">
+        <div className="animate-rise flex max-w-full flex-wrap items-center justify-center gap-3 rounded-lg py-1.5 pr-4 pl-1.5">
           <span className={`${EYEBROW} inline-flex items-center gap-2 bg-violet-900 px-2.5 py-1 text-violet-200 rounded-lg`}>
-            <span className="animate-blink h-1.5 w-1.5 rounded-full bg-violet-300" />
+            <span className="animate-blink h-1.5 w-1.5 rounded-full bg-white" />
             Live
           </span>
           <span className="text-[15px] text-mist-200">
-            Login Securely via Linkedin OAuth Channels
-          </span>
+            With Integrated Linkedin OAuth Channels
+        </span>
         </div>
 
         <h1 className="animate-rise mt-8 max-w-[900px] text-center font-display text-[40px] leading-[1.0] font-light tracking-[-.03em] text-balance text-mist-50 [animation-delay:.1s] sm:text-[60px] lg:text-[80px]">
@@ -256,7 +268,7 @@ export default function Landing() {
           Ship <span className="text-violet-500">every reel</span> on time.
         </h1>
 
-        <p className="animate-rise mt-8 max-w-[620px] text-center text-[18px] leading-[1.6] text-pretty text-mist-200 [animation-delay:.2s]">
+        <p className="animate-rise mt-8 max-w-[620px] text-center text-[16px] leading-[1.6] text-pretty text-mist-200 [animation-delay:.2s]">
           Drop in a reel, pick a time, walk away. We validate the file, pull a thumbnail, and
           publish through LinkedIn&rsquo;s official API — with a queue that tells you exactly what
           happened, and why.
@@ -276,38 +288,40 @@ export default function Landing() {
 
         {/* Sign in starts OAuth — there is no separate signup. Guest is a real
             account, just a sandboxed one; see the note under the buttons. */}
-        <div className="animate-rise mt-10 flex w-full flex-wrap items-center justify-center gap-3 [animation-delay:.3s]">
-          <button
-            type="button"
-            onClick={startSignIn}
-            className={`${BTN_PRIMARY} px-8 py-4 text-[18px]`}
-          >
-            Sign in with LinkedIn
-            <svg
-              className="h-5 w-5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M5 12h14m-6-6 6 6-6 6" />
-            </svg>
-          </button>
-          {guestEnabled && (
+        <div className="animate-rise mt-10 flex w-full max-w-[560px] flex-col items-center justify-center gap-3 [animation-delay:.3s] scale-90">
+          <div className="flex w-full flex-row items-center justify-center gap-3">
             <button
               type="button"
-              onClick={() => void startGuest()}
-              disabled={guestBusy}
-              className={`${BTN_OUTLINE} px-8 py-4 text-[18px] hover:text-mist-50`}
+              onClick={startSignIn}
+              className={`${BTN_PRIMARY} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
             >
-              {guestBusy ? 'Setting up…' : 'Try it as a guest'}
+              Sign in with LinkedIn
+              <svg
+                className="h-4 w-4 sm:h-5 sm:w-5 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12h14m-6-6 6 6-6 6" />
+              </svg>
             </button>
-          )}
+            {guestEnabled && (
+              <button
+                type="button"
+                onClick={() => void startGuest()}
+                disabled={guestBusy}
+                className={`${BTN_OUTLINE} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] hover:text-mist-50 whitespace-nowrap`}
+              >
+                {guestBusy ? 'Setting up…' : 'Try as a guest'}
+              </button>
+            )}
+          </div>
           <Link
             to={DOCS_PATH}
-            className={`${BTN_OUTLINE} px-8 py-4 text-[18px] hover:text-mist-50`}
+            className={`${BTN_OUTLINE} w-full justify-center px-8 py-3 sm:py-4 text-[13px] sm:text-[18px] hover:text-mist-50`}
           >
             Read the docs
           </Link>
