@@ -315,8 +315,9 @@ engagement model, not live LinkedIn metrics.
 | The API is not hosted — it runs locally | **scheduled posts only fire while the process is up**; a missed post publishes on the next start within the grace window, or is marked failed |
 | Uploaded videos sit on the local filesystem | they survive sign-out and restarts, but not a cleaned working directory. `MEDIA_BACKEND=object` is the seam for fixing that |
 | Access tokens stored unencrypted | anyone with database access can read them |
-| No rate limiting | nothing throttles repeated requests |
-| The SPA and the API are on different origins | `CORS_ORIGINS` and `VITE_API_URL` both have to be set, or nothing talks to anything |
+| Rate limits are counted in one process | accurate today (the app runs a single worker so the scheduler does not double-publish), but they would multiply if that ever changed |
+| Anonymous rate limits key on the client IP | an office or campus behind one NAT shares a counter, so the guest sign-in allowance is deliberately generous rather than tight |
+| The SPA and the API are on different origins | `CORS_ORIGINS` and `VITE_API_URL` both have to be set, or nothing talks to anything. In production `CORS_ORIGINS` **must** name the real frontend URL — a `localhost` value is now refused and every request is blocked |
 
 ---
 

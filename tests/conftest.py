@@ -46,6 +46,23 @@ def isolate_env_from_dotenv(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Drop rate-limit counters between tests.
+
+    The limiter is process-global by design (one worker, one dict). In the
+    suite that means every test client shares the key `ip:127.0.0.1`, so a file
+    that legitimately signs in a dozen guests exhausts the hourly allowance and
+    the NEXT test fails with a 429 that has nothing to do with what it is
+    testing. Same category as the singletons below.
+    """
+    from backend.utils.http_security import reset_limits
+
+    reset_limits()
+    yield
+    reset_limits()
+
+
+@pytest.fixture(autouse=True)
 def reset_reel_manager():
     """Drop the cached ReelManager between tests.
 

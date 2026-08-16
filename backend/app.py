@@ -21,6 +21,31 @@ from backend.utils.config import (
 )
 from backend.utils.logger import setup_logging, get_logger
 from backend.utils.database import init_db, get_db
+from backend.utils.http_security import (
+    enforce as rate_limit_enforce,
+    security_headers,
+    validate_cors_origins,
+)
+
+
+# (method, path prefix, max requests, window in seconds). First match wins, so
+# the more specific prefix must come first.
+#
+# Guest sign-in is the one rule counted by IP rather than by user - it is what
+# an anonymous visitor calls to GET a session, so there is no user yet. That
+# makes it the rule most likely to hit an innocent bystander: an office, campus
+# or mobile carrier behind one NAT shares a single counter. Hence 25 rather
+# than the ~10 abuse alone would justify. Anyone caught by it gets a 429 with
+# a Retry-After rather than a dead button, and the ceiling still caps an
+# attacker at a few hundred throwaway rows a day instead of unbounded.
+RATE_LIMIT_RULES = (
+    ("POST", "/api/auth/guest", 25, 3600),
+    ("POST", "/api/upload", 20, 3600),
+    ("POST", "/api/captions", 30, 3600),
+    ("POST", "/api/composer", 60, 3600),
+)
+
+_rate_limit_hook = rate_limit_enforce(RATE_LIMIT_RULES)
 
 
 # Headroom for multipart envelope overhead on top of the configured file-size
@@ -63,17 +88,47 @@ def create_app():
 
     # Restrict CORS to known frontend origins. A wildcard here would let any
     # website a user visits issue requests against this API from their browser.
-    allowed_origins = [
-        origin.strip()
-        for origin in settings.cors_origins.split(",")
-        if origin.strip()
-    ]
+    #
+    # The allowlist is validated rather than trusted: a wildcard is dropped
+    # outright, and in production so is any localhost origin. Both were
+    # reachable purely by editing an env var, and both hand a signed-in user's
+    # session to code the operator never intended to trust.
+    is_production = settings.flask_env.lower() in ("production", "prod")
+    allowed_origins, cors_problems = validate_cors_origins(
+        settings.cors_origins, is_production
+    )
+    for problem in cors_problems:
+        logger.error(f"🚨 {problem}")
+
+    if not allowed_origins:
+        # Fail loud, not open. An empty list makes flask-cors send no CORS
+        # headers at all, so the browser blocks every cross-origin call - the
+        # safe outcome, but one that looks like a mystery app-wide outage
+        # unless it is said plainly here.
+        logger.error(
+            "🚨 No usable CORS origins configured. Every cross-origin browser "
+            "request will be blocked. Set CORS_ORIGINS to your frontend URL."
+        )
+
     CORS(
         app,
         resources={r"/api/*": {"origins": allowed_origins}},
         supports_credentials=True,
     )
-    logger.info(f"🔒 CORS restricted to: {', '.join(allowed_origins)}")
+    logger.info(f"🔒 CORS restricted to: {', '.join(allowed_origins) or '(none)'}")
+
+    # Security headers on every response. Computed once - they do not vary per
+    # request - and applied in an after_request hook so error responses and
+    # static SPA files carry them too, not just the JSON routes.
+    _security_headers = security_headers(is_production)
+
+    @app.after_request
+    def apply_security_headers(response):
+        for header, value in _security_headers.items():
+            # setdefault semantics: never clobber a header a route set
+            # deliberately for itself.
+            response.headers.setdefault(header, value)
+        return response
 
     # Require an API key on every /api/* route except an explicit allowlist.
     # Registered as a before_request hook rather than per-route decorators so
@@ -83,6 +138,25 @@ def create_app():
     @app.before_request
     def enforce_authentication():
         return authenticate_request()
+
+    # Rate limits, registered AFTER authentication so `current_user()` is
+    # already resolved and a signed-in caller is counted by user id instead of
+    # by IP - stable across a phone changing networks, and unspoofable.
+    #
+    # The numbers are set where a human never reaches them and a script does:
+    #
+    #   guest sign-in   - public and unauthenticated, so it is the one route an
+    #                     anonymous visitor can hammer. Each success creates a
+    #                     database row and a sandbox directory, so an unmetered
+    #                     endpoint is a free disk-filling primitive.
+    #   uploads         - each one costs a large write plus ffmpeg probing and
+    #                     thumbnail extraction. The expensive route in the app.
+    #   caption/composer- each call spends real money at the model API. This is
+    #                     the limit that stops one runaway client from turning
+    #                     a bug into a bill.
+    @app.before_request
+    def enforce_rate_limits():
+        return _rate_limit_hook()
 
     if not api_key_configured():
         logger.error(
