@@ -32,8 +32,11 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | Publish to Instagram | ⛔ blocked on Meta App Review |
 | Publish to a **company page** | ⛔ blocked on LinkedIn partner approval |
 | AI caption assist | ✅ working — three drafts from your one-line brief; needs a real `CLAUDE_API_KEY` |
+| **Assistant** — say what you want, get a finished draft | ✅ working — picks the reel, writes the caption, proposes a time. It cannot publish; you press the button |
+| Automatic thumbnail choice | ✅ working — samples and scores frames instead of grabbing a black one |
+| Reels persist across sign-out, ready for object storage | ✅ working — `MEDIA_BACKEND=local` today |
 
-**Tests:** 152 backend (pytest) + 35 frontend (vitest), all passing. CI runs
+**Tests:** 193 backend (pytest) + 35 frontend (vitest), all passing. CI runs
 both on every push to `main`.
 
 ---
@@ -186,7 +189,7 @@ approving from the Admin panel.
 ### Tests
 
 ```bash
-pytest tests/ -q                 # 119 backend tests
+pytest tests/ -q                 # 193 backend tests
 cd frontend
 npx tsc --noEmit                 # types
 npx vitest run                   # 35 frontend tests
@@ -260,7 +263,7 @@ engagement model, not live LinkedIn metrics.
 | Limitation | Impact |
 |---|---|
 | The API is not hosted — it runs locally | **scheduled posts only fire while the process is up**; a missed post publishes on the next start within the grace window, or is marked failed |
-| Uploaded videos sit on the local filesystem | media is lost if the working directory is cleaned; the database is external and unaffected |
+| Uploaded videos sit on the local filesystem | they survive sign-out and restarts, but not a cleaned working directory. `MEDIA_BACKEND=object` is the seam for fixing that |
 | Access tokens stored unencrypted | anyone with database access can read them |
 | No rate limiting | nothing throttles repeated requests |
 | The SPA and the API are on different origins | `CORS_ORIGINS` and `VITE_API_URL` both have to be set, or nothing talks to anything |
@@ -281,7 +284,7 @@ frontend/src/
   api/          typed client modules, upload store
   pages/        Compose, Queue, Analytics, Setup, Docs, Settings, Admin
   components/
-tests/          119 backend tests
+tests/          193 backend tests
 docs/
   ARCHITECTURE.md   everything technical
 Dockerfile      multi-stage: Node builds the SPA, Python serves it
