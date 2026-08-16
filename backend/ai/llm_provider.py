@@ -427,9 +427,8 @@ Return valid JSON with this structure:
                     image_data = thumbnail.read_bytes()
                     content.append(
                         {
-                            "type": "image",
-                            "data": base64.standard_b64encode(image_data).decode("ascii"),
                             "mime_type": "image/jpeg",
+                            "data": base64.standard_b64encode(image_data).decode("ascii"),
                         }
                     )
                     detail += (
@@ -439,13 +438,15 @@ Return valid JSON with this structure:
             except (OSError, Exception) as e:
                 logger.warning(f"Could not read thumbnail {thumbnail}: {e}")
 
-        content.append({"type": "text", "text": detail})
+        content.append(detail)
 
         try:
-            model = self.client.GenerativeModel(self.settings.gemini_model)
+            model = self.client.GenerativeModel(
+                self.settings.gemini_model,
+                system_instruction=system_prompt,
+            )
             response = model.generate_content(
                 content,
-                system_instruction=system_prompt,
                 generation_config=genai.types.GenerationConfig(
                     max_output_tokens=2048,
                     temperature=0.7,
@@ -543,14 +544,16 @@ Return valid JSON with this structure:
         tool_notes: List[str] = []
 
         try:
-            model = self.client.GenerativeModel(self.settings.gemini_model)
+            model = self.client.GenerativeModel(
+                self.settings.gemini_model,
+                system_instruction=COMPOSER_SYSTEM,
+                tools=[self._convert_tools_to_gemini(TOOLS)],
+            )
 
             for _ in range(MAX_TOOL_ROUNDS):
                 try:
                     response = model.generate_content(
                         convo,
-                        system_instruction=COMPOSER_SYSTEM,
-                        tools=[self._convert_tools_to_gemini(TOOLS)],
                         generation_config=genai.types.GenerationConfig(
                             max_output_tokens=MAX_TOKENS,
                             temperature=0.3,
