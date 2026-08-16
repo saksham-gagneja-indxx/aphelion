@@ -88,3 +88,13 @@ services:
         value: your_instagram_password
       - key: CLAUDE_API_KEY
         value: sk-ant-placeholder-not-used-in-v1
+
+      # LLM provider for caption assist and the assistant/composer.
+      # "gemini" or "claude". Set GEMINI_API_KEY in the dashboard when using
+      # gemini - never in this file.
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-pro-latest

@@ -607,6 +607,26 @@ Return valid JSON with this structure:
         }
 
     @staticmethod
+    def _strip_unsupported_schema_fields(schema: Any) -> Any:
+        """Remove JSON Schema keywords Gemini's function-calling API rejects.
+
+        Gemini's schema dialect is a subset of JSON Schema and errors out
+        ("Unknown field for Schema: additionalProperties") on keywords Claude's
+        tool schemas rely on. Strip them recursively rather than hand-writing a
+        second schema per tool.
+        """
+        UNSUPPORTED = {"additionalProperties", "$schema"}
+        if isinstance(schema, dict):
+            return {
+                k: GeminiProvider._strip_unsupported_schema_fields(v)
+                for k, v in schema.items()
+                if k not in UNSUPPORTED
+            }
+        if isinstance(schema, list):
+            return [GeminiProvider._strip_unsupported_schema_fields(v) for v in schema]
+        return schema
+
+    @staticmethod
     def _convert_tools_to_gemini(tools: List[dict]) -> Dict[str, Any]:
         """Convert Claude tool format to Gemini tool format."""
         tool_defs = {}
@@ -614,7 +634,9 @@ Return valid JSON with this structure:
             name = tool["name"]
             tool_defs[name] = {
                 "description": tool["description"],
-                "parameters": tool["input_schema"],
+                "parameters": GeminiProvider._strip_unsupported_schema_fields(
+                    tool["input_schema"]
+                ),
             }
         return {"function_declarations": [{"name": k, **v} for k, v in tool_defs.items()]}
 
