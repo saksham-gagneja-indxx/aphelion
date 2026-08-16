@@ -30,7 +30,9 @@ import {
 } from '../api/schedule'
 import { deleteReel } from '../api/queue'
 import type { Reel } from '../api/types'
+import type { ComposerDraft } from '../api/composer'
 import { cancel, getSnapshot, isBusy, reset, startUpload, subscribe } from '../api/uploadStore'
+import AssistantPanel from '../components/AssistantPanel'
 import CaptionAssist from '../components/CaptionAssist'
 import { useCurrentUser, useUserId } from '../current-user'
 import { useUndo } from '../undo'
@@ -38,6 +40,7 @@ import {
   BANNER_DANGER,
   BANNER_QUIET,
   BTN_DANGER,
+  BTN_OUTLINE,
   BTN_PRIMARY,
   EYEBROW,
   FIELD,
@@ -124,14 +127,17 @@ export default function Compose() {
   const [captionFromAssist, setCaptionFromAssist] = useState(false)
   const [picked, setPicked] = useState<Reel | null>(null)
   const [when, setWhen] = useState('')
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   const upload = useSyncExternalStore(subscribe, getSnapshot)
   const busy = isBusy(upload)
 
+  // Always on, not gated to the "existing" tab: the assistant needs the full
+  // list to resolve whatever reel_filename it picks into a real Reel, even
+  // while the visible tab is "Upload new".
   const reelsQuery = useQuery({
     queryKey: ['reels', USER_ID],
     queryFn: () => listReels(USER_ID),
-    enabled: source === 'existing',
   })
 
   const lastCompleted = useRef<number | null>(null)
@@ -212,12 +218,66 @@ export default function Compose() {
     [USER_ID],
   )
 
+  /**
+   * Wire an assistant turn's draft into this screen's own state.
+   *
+   * Called after every turn, not just when the conversation ends, so the
+   * boxes below fill in live while the panel is still open — the point of
+   * folding the assistant into this page rather than keeping it a
+   * destination with its own draft summary to reconcile back in.
+   */
+  const applyAssistantDraft = useCallback(
+    (draft: ComposerDraft) => {
+      if (draft.reel_filename) {
+        const match = (reelsQuery.data?.reels ?? []).find(
+          (r) => r.filename === draft.reel_filename,
+        )
+        if (match) {
+          setSource('existing')
+          setPicked(match)
+        }
+      }
+      if (draft.caption) {
+        setCaption(draft.caption)
+        setCaptionFromAssist(true)
+      }
+      if (draft.when) {
+        if (draft.when === 'now') {
+          setTiming('now')
+        } else {
+          // Same YYYY-MM-DDTHH:MM shape the datetime-local input already uses.
+          setTiming('later')
+          setWhen(draft.when)
+        }
+      }
+    },
+    [reelsQuery.data],
+  )
+
   const canSubmit = !!chosen && (timing === 'now' || !!when) && !submit.isPending
 
   return (
     <div className="mx-auto max-w-2xl animate-rise-in">
-      <h1 className={H1}>New post</h1>
-      <p className={SUB}>Pick a video, write a caption, choose when it goes out.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className={H1}>New post</h1>
+          <p className={SUB}>Pick a video, write a caption, choose when it goes out.</p>
+        </div>
+        {/* Not sure what to post at all, rather than "help with this one
+            caption" — that is CaptionAssist's job, scoped to Step 2. This
+            one can also pick the video, so it lives up here instead. */}
+        <button
+          type="button"
+          onClick={() => setAssistantOpen(true)}
+          className={`${BTN_OUTLINE} mt-1 shrink-0`}
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
+          </svg>
+          Not sure what to post?
+        </button>
+      </div>
 
       {user.is_guest ? (
         <div className={`${BANNER_QUIET} mt-6`}>
@@ -530,6 +590,12 @@ export default function Compose() {
           )}
         </Step>
       </div>
+
+      <AssistantPanel
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        onApplyDraft={applyAssistantDraft}
+      />
     </div>
   )
 }

@@ -37,8 +37,8 @@ For how any of it works internally, see **[docs/ARCHITECTURE.md](docs/ARCHITECTU
 | **Scheduled posts firing on time** | ⚠️ needs an always-on instance — a post due while the free instance is asleep publishes when it next wakes (within an hour) or is reported as failed |
 | Publish to Instagram | ⛔ blocked on Meta App Review |
 | Publish to a **company page** | ⛔ blocked on LinkedIn partner approval |
-| AI caption assist | ✅ working — three drafts from your one-line brief; needs a real `CLAUDE_API_KEY` |
-| **Assistant** — say what you want, get a finished draft | ✅ working — picks the reel, writes the caption, proposes a time. It cannot publish; you press the button |
+| AI caption assist | ✅ working — three drafts from your one-line brief; needs a real API key for whichever `LLM_PROVIDER` is set |
+| **Assistant** — say what you want, get a finished draft | ✅ working — a popover on New post, not a separate page. Picks the reel, writes the caption, proposes a time, live in the same form. It cannot publish; you press the button |
 | Automatic thumbnail choice | ✅ working — samples and scores frames instead of grabbing a black one |
 | Reels persist across sign-out, ready for object storage | ✅ working — `MEDIA_BACKEND=local` today |
 

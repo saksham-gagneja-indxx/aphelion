@@ -557,10 +557,10 @@ else.
 
 ---
 
-## Caption assist
+## Caption assist and the LLM provider seam
 
-Three LinkedIn captions for a reel, written by Claude from a one-line brief
-the operator types.
+Three LinkedIn captions for a reel, written from a one-line brief the operator
+types.
 
 **It does not watch the video, and that is the design.** The server knows a
 filename, a duration, a size and one thumbnail frame. A single frame of a
@@ -575,25 +575,39 @@ Real video understanding needs audio transcription. ffmpeg is already in the
 image but no transcription model is — a separate dependency, cost and latency
 decision, not something to smuggle in behind a button.
 
+**The model is swappable.** `backend/ai/llm_provider.py` defines an abstract
+`LLMProvider` with one implementation per backend — `ClaudeProvider`,
+`GeminiProvider`, `NvidiaNimProvider` — and `get_provider()` picks one from
+`LLM_PROVIDER`. `captions.py` and `composer.py` call the provider interface
+only; neither imports a vendor SDK directly.
+
 | | |
 |---|---|
-| Model | `claude-haiku-4-5` — ~1¢ per suggestion |
-| Shape | one `messages.create`, no tools, no agent |
-| Output | structured outputs (`output_config.format`) — three `{angle, text}` objects |
-| Effort / thinking | neither is sent — `output_config.effort` returns a 400 on Haiku 4.5, and the model has no adaptive thinking |
-| Vision | the reel's thumbnail as a base64 image block, when one exists |
+| `LLM_PROVIDER` | `nvidia` (default), `gemini`, or `claude` |
+| NVIDIA | `meta/muse-glimmer-30b` via NVIDIA NIM's OpenAI-compatible endpoint (`integrate.api.nvidia.com/v1`), reusing the `openai` SDK rather than a bespoke client |
+| Gemini | `gemini-pro-latest` via `google-generativeai` |
+| Claude | `claude-haiku-4-5` for captions, `claude-opus-5` for the composer |
+| Output | structured JSON — three `{angle, text}` objects — enforced by a schema where the provider supports one, and by prompt instruction plus a parse check where it does not |
+| Vision | the reel's thumbnail as a base64 image, when one exists |
+
+One real bug from bringing NVIDIA online: Muse Glimmer's reasoning parser
+spends part of the token budget internally before emitting the JSON body, and
+the default 2048-token cap truncated the response mid-string. Caption
+generation raised its ceiling to 8192 and now checks `finish_reason == "length"`
+explicitly rather than handing a half-formed JSON blob to `json.loads`.
 
 Three switches predated the feature and were wired to nothing:
 `Post.ai_generated_caption`, the `enable_caption_generation` user preference,
-and `CLAUDE_API_KEY`. All three now mean something — the flag and a
-non-placeholder key gate the endpoint, and the column records whether a
+and the active provider's API key. All three now mean something — the flag and
+a non-placeholder key gate the endpoint, and the column records whether a
 caption was drafted or typed. Editing a drafted caption clears the flag: at
 that point it is the operator's caption.
 
-**The key is passed explicitly.** The setting is `CLAUDE_API_KEY` but the SDK
-reads `ANTHROPIC_API_KEY`, so `Anthropic(api_key=settings.claude_api_key)` is
-required. Relying on the SDK's own lookup fails with an authentication error
-that points at Anthropic rather than at the unset config value.
+**Keys are passed explicitly**, never left to an SDK's own environment lookup.
+`CLAUDE_API_KEY` is the setting name but the Anthropic SDK reads
+`ANTHROPIC_API_KEY`; relying on that fails with an authentication error that
+points at Anthropic rather than at the unset config value. Same reasoning for
+`GEMINI_API_KEY` and `NVIDIA_API_KEY`.
 
 ---
 
@@ -669,11 +683,22 @@ not exist.
 
 ## The conversational composer
 
-`/assistant`. Say "post the OAuth reel tomorrow at 9" and get back a chosen
-reel, a written caption and a proposed time. If something is genuinely missing
-it asks for one thing rather than presenting a form.
+A popover on **New post** (`/compose`), not a page of its own. Say "post the
+OAuth reel tomorrow at 9" and watch it choose a reel, write a caption and
+propose a time, live, in that screen's own Step 1/2/3 fields. If something is
+genuinely missing it asks for one thing rather than presenting a form.
 
-### Claude cannot publish
+It used to be a standalone `/assistant` route with its own draft summary
+panel. That meant a context switch away from the page the person had already
+started on, and a second "here's what's about to be posted" surface to keep
+in sync with the real one. Both problems went away by making the popover write
+directly into Compose's own state — `reelsQuery`, `caption`, `timing`,
+`when` — as each turn lands, and by closing itself automatically once the
+draft is ready (reel, caption and time all set) rather than waiting to be
+dismissed. `/assistant` now redirects to `/compose`, the same way the old
+`/upload` and `/schedule` paths do.
+
+### The model cannot publish
 
 There is no publish tool on this loop and there should never be one. The three
 tools — `choose_reel`, `set_caption`, `set_schedule` — are pure edits to a JSON
@@ -696,17 +721,25 @@ action tool later means reading this first.
 
 | | |
 |---|---|
-| Model | `claude-opus-5`, effort `low` — one short turn, and a chat is judged on latency |
+| Model | whichever `LLM_PROVIDER` is active — see [Caption assist and the LLM provider seam](#caption-assist-and-the-llm-provider-seam) — `claude-opus-5` at effort `low` when on Claude |
 | Loop | server-side; the tools only mutate a draft, so round-tripping each to the browser buys nothing |
 | State | stateless endpoint. Transcript and draft go up every turn |
 | Ceiling | four tool rounds, then it returns the partial draft rather than spinning |
+| Frontend | `AssistantPanel.tsx`, opened from a trigger on `Compose.tsx`; applies each turn's draft via a callback rather than owning its own review surface |
 
 Statelessness matches the rest of the app — a signed session token and no
 server-side session store — and avoids a conversations table whose retention
 nobody has decided.
 
-A proposed time in the past is refused inside the tool, where Claude can still
-fix it, rather than being passed to the schedule endpoint to be refused there.
+A proposed time in the past is refused inside the tool, where the model can
+still fix it, rather than being passed to the schedule endpoint to be refused
+there.
+
+On NVIDIA, tool calls come back in OpenAI's function-calling shape rather than
+Anthropic's, and Gemini's function-declaration schema rejects the
+`additionalProperties` keyword Claude's tool schemas use outright — both
+providers convert the same `TOOLS` list defined once in `composer.py` rather
+than maintaining three copies of it.
 
 ---
 

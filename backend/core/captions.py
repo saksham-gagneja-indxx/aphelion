@@ -16,21 +16,14 @@ image, but no transcription model is; that is a separate dependency, cost and
 latency decision, not something to smuggle in here.
 """
 
-import base64
-import json
 from pathlib import Path
 from typing import List, Optional
 
+from backend.ai.llm_provider import get_provider
 from backend.utils.config import get_settings, is_placeholder
 from backend.utils.logger import get_logger
 
 logger = get_logger("social_media_automation.captions")
-
-# Haiku 4.5, chosen for cost: roughly a fifth of Opus per suggestion, and a
-# caption is short enough that the quality gap is acceptable. Note this model
-# does NOT accept output_config.effort - passing it returns a 400 - and it has
-# no adaptive thinking, so `thinking` is omitted entirely below.
-MODEL = "claude-haiku-4-5"
 
 # Three captions plus their angles fit comfortably; the cap is a backstop
 # against a runaway response, not a length target.
@@ -98,14 +91,14 @@ class CaptionError(Exception):
 def is_configured() -> bool:
     """True when captions can actually be generated.
 
-    Both switches have to be on: the feature flag, and a real API key. The
-    key defaults to a placeholder string in `.env.example` and `render.yaml`,
-    which is not the same as being unset.
+    The feature flag must be on and the configured provider must have a real API key.
     """
     settings = get_settings()
-    return bool(settings.enable_caption_generation) and not is_placeholder(
-        settings.claude_api_key
-    )
+    if not bool(settings.enable_caption_generation):
+        return False
+
+    provider = get_provider()
+    return provider.is_configured()
 
 
 def unavailable_reason() -> Optional[str]:
@@ -113,35 +106,13 @@ def unavailable_reason() -> Optional[str]:
     settings = get_settings()
     if not settings.enable_caption_generation:
         return "Caption assist is disabled (ENABLE_CAPTION_GENERATION is false)."
-    if is_placeholder(settings.claude_api_key):
-        return (
-            "Caption assist needs an Anthropic API key. CLAUDE_API_KEY is still "
-            "set to its placeholder value."
-        )
+
+    provider = get_provider()
+    provider_reason = provider.unavailable_reason()
+    if provider_reason:
+        return provider_reason
+
     return None
-
-
-def _thumbnail_block(thumbnail: Optional[Path]) -> Optional[dict]:
-    """A base64 image block for the reel's thumbnail, if there is one."""
-    if thumbnail is None:
-        return None
-    try:
-        if not thumbnail.is_file():
-            return None
-        data = thumbnail.read_bytes()
-    except OSError as e:
-        logger.warning(f"Could not read thumbnail {thumbnail}: {e}")
-        return None
-
-    # Thumbnails are generated as JPEG by the reel manager.
-    return {
-        "type": "image",
-        "source": {
-            "type": "base64",
-            "media_type": "image/jpeg",
-            "data": base64.standard_b64encode(data).decode("ascii"),
-        },
-    }
 
 
 def suggest_captions(
@@ -154,94 +125,23 @@ def suggest_captions(
     Returns a list of {"angle": str, "text": str}. Raises CaptionError with a
     message fit to show the user.
     """
-    brief = (brief or "").strip()
-    if not brief:
+    settings = get_settings()
+    if not settings.enable_caption_generation:
         raise CaptionError(
-            "Describe the reel in a sentence first — captions are written from "
-            "your brief, not from the video.",
-            status=400,
+            "Caption assist is disabled (ENABLE_CAPTION_GENERATION is false).", status=503
         )
 
-    reason = unavailable_reason()
+    provider = get_provider()
+    reason = provider.unavailable_reason()
     if reason:
         raise CaptionError(reason, status=503)
 
     try:
-        import anthropic
-    except ImportError:
+        return provider.suggest_captions(brief, thumbnail, duration_seconds)
+    except CaptionError:
+        raise
+    except Exception as e:
+        logger.error(f"Caption generation error: {str(e)}")
         raise CaptionError(
-            "The anthropic package is not installed on the server.", status=503
+            f"Caption generation failed: {str(e)[:100]}", status=502
         )
-
-    settings = get_settings()
-    # The env var is CLAUDE_API_KEY but the SDK looks for ANTHROPIC_API_KEY, so
-    # the key is passed explicitly. Relying on the SDK's own lookup here fails
-    # with an auth error that points nowhere near the real cause.
-    client = anthropic.Anthropic(api_key=settings.claude_api_key)
-
-    detail = f"Brief from the poster: {brief}"
-    if duration_seconds:
-        detail += f"\n\nThe reel is {duration_seconds:.0f} seconds long."
-
-    content = []
-    image = _thumbnail_block(thumbnail)
-    if image:
-        content.append(image)
-        detail += (
-            "\n\nA thumbnail frame is attached. Treat it as a hint about setting "
-            "and tone only."
-        )
-    content.append({"type": "text", "text": detail})
-
-    try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=SYSTEM,
-            # Format only. `effort` is not supported on Haiku 4.5 and returns
-            # a 400, and omitting `thinking` means no thinking tokens - which
-            # was the larger half of the per-request cost.
-            output_config={
-                "format": {"type": "json_schema", "schema": CAPTION_SCHEMA},
-            },
-            messages=[{"role": "user", "content": content}],
-        )
-    except anthropic.AuthenticationError:
-        raise CaptionError(
-            "Anthropic rejected the API key. Check CLAUDE_API_KEY.", status=502
-        )
-    except anthropic.RateLimitError:
-        raise CaptionError(
-            "Anthropic is rate limiting this account. Try again shortly.", status=429
-        )
-    except anthropic.APIStatusError as e:
-        logger.error(f"Anthropic returned {e.status_code}: {e.message}")
-        raise CaptionError(
-            f"Caption generation failed upstream ({e.status_code}).", status=502
-        )
-    except anthropic.APIConnectionError:
-        raise CaptionError("Could not reach Anthropic. Try again shortly.", status=502)
-
-    # A refusal is a successful HTTP call with no usable content, so this has
-    # to be checked before touching response.content.
-    if response.stop_reason == "refusal":
-        raise CaptionError(
-            "Claude declined to write a caption for this brief.", status=422
-        )
-
-    text = next((b.text for b in response.content if b.type == "text"), "")
-    try:
-        captions = json.loads(text)["captions"]
-    except (ValueError, KeyError, TypeError):
-        logger.error(f"Unparseable caption response: {text[:300]}")
-        raise CaptionError("Caption generation returned an unusable response.")
-
-    cleaned = [
-        {"angle": str(c.get("angle", "")).strip(), "text": str(c.get("text", "")).strip()}
-        for c in captions
-        if isinstance(c, dict) and str(c.get("text", "")).strip()
-    ]
-    if not cleaned:
-        raise CaptionError("Caption generation returned nothing usable.")
-
-    return cleaned[:3]

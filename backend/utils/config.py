@@ -25,9 +25,25 @@ class Settings(BaseSettings):
     )
     db_echo: bool = Field(default=False, alias="DB_ECHO")
 
-    # ============ CLAUDE API SETTINGS ============
-    claude_api_key: str = Field(alias="CLAUDE_API_KEY")
+    # ============ LLM API SETTINGS ============
+    # Supported providers: "claude" (Anthropic), "gemini" (Google), "nvidia" (NVIDIA NIM)
+    llm_provider: str = Field(default="nvidia", alias="LLM_PROVIDER")
+
+    # Claude (Anthropic) settings
+    claude_api_key: str = Field(default="sk-ant-placeholder", alias="CLAUDE_API_KEY")
     claude_model: str = Field(default="claude-3-5-sonnet-20241022", alias="CLAUDE_MODEL")
+
+    # Gemini (Google) settings
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-pro-latest", alias="GEMINI_MODEL")
+
+    # NVIDIA NIM settings. OpenAI-compatible API serving open-weight models
+    # (Meta Muse Glimmer, Nemotron, etc) at https://integrate.api.nvidia.com/v1.
+    nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
+    nvidia_model: str = Field(default="meta/muse-glimmer-30b", alias="NVIDIA_MODEL")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL"
+    )
 
     # ============ INSTAGRAM SETTINGS ============
     instagram_username: str = Field(alias="INSTAGRAM_USERNAME")
