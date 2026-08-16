@@ -240,13 +240,13 @@ export default function Landing() {
 
       <div className="relative z-10 mx-auto flex max-w-[1280px] flex-col items-center px-8 pt-20">
         {/* Status chip */}
-        <div className="animate-rise flex max-w-full flex-wrap items-center justify-center gap-3 border border-line bg-ink-900 py-1.5 pr-4 pl-1.5">
-          <span className={`${EYEBROW} inline-flex items-center gap-2 bg-violet-900 px-2.5 py-1 text-violet-200`}>
+        <div className="animate-rise flex max-w-full flex-wrap items-center justify-center gap-3 border border-line bg-ink-900 rounded-lg py-1.5 pr-4 pl-1.5">
+          <span className={`${EYEBROW} inline-flex items-center gap-2 bg-violet-900 px-2.5 py-1 text-violet-200 rounded-lg`}>
             <span className="animate-blink h-1.5 w-1.5 rounded-full bg-violet-300" />
             Live
           </span>
           <span className="text-[15px] text-mist-200">
-            LinkedIn publishing shipped via the official REST API
+            Login Securely via Linkedin OAuth Channels
           </span>
         </div>
 
