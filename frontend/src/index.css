@@ -121,8 +121,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--color-mist-50); text-decoration: none; }
-a:hover { color: var(--color-violet-300); }
+/* @layer base, not a bare rule: Tailwind v4 puts every unlayered style ahead
+ * of ALL of its own layers (base, utilities) in the cascade, regardless of
+ * source order - so a bare `a { color: ... }` here would beat every text-*
+ * utility ever applied to a link, including on buttons rendered as <a> (the
+ * white-on-white "Open LinkedIn developer portal" link in Setup.tsx was
+ * exactly this: BTN_PRIMARY's `text-ink-950` never had a chance against it).
+ * Base layer is the right place for a reset anyway - it's meant to be the
+ * thing utilities override. */
+@layer base {
+  a { color: var(--color-mist-50); text-decoration: none; }
+  a:hover { color: var(--color-violet-300); }
+}
 
 ::selection {
   background: var(--color-violet-900);

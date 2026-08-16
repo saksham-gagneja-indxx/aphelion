@@ -140,6 +140,8 @@ class User(Base):
 
     def to_identity(self) -> dict:
         """Shape returned by /api/me. Deliberately excludes tokens."""
+        from backend.utils.config import linkedin_configured
+
         return {
             "id": self.id,
             "name": self.full_name,
@@ -154,6 +156,15 @@ class User(Base):
             "instagram_connected": bool(self.instagram_connected),
             "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
             "has_own_linkedin_app": self.has_own_linkedin_app(),
+            # Whether ANY LinkedIn app is available to connect through - the
+            # server's shared one, or this account's own. Distinct from
+            # linkedin_connected: an operator can register the app (or an
+            # admin can, once, for everyone) without any individual account
+            # having clicked through the OAuth grant yet. The SPA uses this to
+            # decide whether landing on Setup is actually necessary, or
+            # whether there's nothing left to register and it should just go
+            # straight to the app - see App.tsx's "/" redirect.
+            "linkedin_app_configured": linkedin_configured() or self.has_own_linkedin_app(),
         }
 
     def to_admin_dict(self, post_count: int = 0) -> dict:

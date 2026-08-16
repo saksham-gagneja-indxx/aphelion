@@ -487,13 +487,21 @@ function Shell({
         <CurrentUserProvider user={user}>
           <UndoProvider>
           <Routes>
-            {/* A first-time account lands on setup rather than an upload form
-                it cannot publish from. */}
+            {/* Setup is for registering a LinkedIn app - there is nothing
+                left to do there once one exists (the server's shared app,
+                or this account's own). A fresh account that still needs to
+                personally click through the OAuth grant lands on Compose
+                like everyone else and gets nudged by the "Finish setup"
+                banner below instead of being blocked from the app entirely. */}
             <Route
               path="/"
               element={
                 <Navigate
-                  to={user.linkedin_connected || user.is_guest ? '/compose' : '/setup'}
+                  to={
+                    user.linkedin_connected || user.is_guest || user.linkedin_app_configured
+                      ? '/compose'
+                      : '/setup'
+                  }
                   replace
                 />
               }

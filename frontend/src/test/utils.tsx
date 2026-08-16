@@ -22,6 +22,7 @@ export const TEST_USER: User = {
   is_guest: false,
   linkedin_connected: false,
   avatar_url: null,
+  linkedin_app_configured: true,
 }
 
 function createTestQueryClient() {

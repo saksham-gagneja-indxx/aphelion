@@ -43,6 +43,14 @@ export interface User {
   is_guest: boolean
   linkedin_connected: boolean
   avatar_url: string | null
+  /**
+   * Whether ANY LinkedIn app is available to connect through - the server's
+   * shared one, or this account's own. Distinct from linkedin_connected:
+   * this can be true before anyone has actually clicked through the OAuth
+   * grant. Used to decide whether a fresh sign-in needs to land on Setup at
+   * all, or whether there's nothing left to register.
+   */
+  linkedin_app_configured: boolean
 }
 
 async function toError(res: Response): Promise<Error> {
