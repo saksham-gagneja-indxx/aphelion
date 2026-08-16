@@ -114,6 +114,11 @@ def security_headers(is_production: bool) -> Dict[str, str]:
     csp = "; ".join([
         "default-src 'self'",
         f"script-src 'self' {CLERK_SCRIPT_ORIGIN}",
+        # Clerk spins up a Web Worker from a blob: URL internally; worker-src
+        # has no directive of its own by default and falls back to
+        # script-src, which doesn't allow blob: - found the same way as the
+        # script-src gap, one CSP violation at a time, live in production.
+        "worker-src 'self' blob:",
         f"style-src 'self' 'unsafe-inline' {FONT_STYLESHEET_ORIGIN}",
         "img-src 'self' data: https:",
         # Fonts are inert content, so an https: wildcard here buys convenience
