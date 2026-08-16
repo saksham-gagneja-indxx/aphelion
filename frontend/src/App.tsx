@@ -227,10 +227,16 @@ function UserMenu({ user }: { user: User }) {
         {open && (
           <div
             role="menu"
-            /* Anchored left below sm: the header wraps at that width, which
-               puts the avatar on the LEFT, and a right-anchored menu then
-               hangs off the side of the screen. */
-            className="surface-raised absolute left-0 z-30 mt-2 w-60 max-w-[calc(100vw-2rem)] origin-top-left sm:left-auto sm:right-0 sm:origin-top-right"
+            /* Right-anchored at every width, because the avatar is now
+               right-aligned at every width.
+
+               This used to be `left-0 sm:left-auto sm:right-0`: below sm the
+               header wrapped, which put the avatar on the LEFT, and a
+               right-anchored menu hung off the side. Moving the page links
+               into the floating bottom bar removed that wrap, so the left
+               anchor became the bug it was written to avoid — on a 390px
+               phone the menu opened 158px past the right edge. */
+            className="surface-raised absolute right-0 z-30 mt-2 w-60 max-w-[calc(100vw-2rem)] origin-top-right"
           >
             <div className="border-b border-line px-4 py-3">
               <p className="truncate text-[15px] text-mist-50">{user.name}</p>
