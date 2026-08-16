@@ -74,6 +74,11 @@ def validate_cors_origins(raw: str, is_production: bool) -> Tuple[List[str], Lis
 # together instead of drifting apart.
 FONT_STYLESHEET_ORIGIN = "https://api.fontshare.com"
 
+# Clerk serves its own client script from the instance's accounts.dev
+# subdomain, which is per-instance and could change if the app moves - a
+# wildcard here (rather than hardcoding noble-glowworm-144) survives that.
+CLERK_SCRIPT_ORIGIN = "https://*.clerk.accounts.dev"
+
 
 def security_headers(is_production: bool) -> Dict[str, str]:
     """Headers attached to every response.
@@ -81,8 +86,14 @@ def security_headers(is_production: bool) -> Dict[str, str]:
     The API serves JSON and, in the single-image deployment, the SPA. The CSP
     below is written for that SPA:
 
-    * `script-src 'self'` — no inline script, no CDN. Vite emits external
-      bundles, so nothing legitimate needs a nonce.
+    * `script-src 'self'` plus Clerk's own script host - Clerk's React SDK
+      loads its actual client (`clerk-js`) from a `<script src>` pointed at
+      the Clerk instance's own accounts.dev subdomain, not bundled by Vite.
+      Without this the script is silently blocked and sign-in never loads at
+      all (`failed_to_load_clerk_js_timeout`) - found live, in production,
+      because local dev never sends this header at all (only this Flask path
+      and vercel.json do), so it passed every check that ran against the dev
+      server. No inline script, no general CDN allowance otherwise.
     * `style-src` allows inline: the app sets a handful of computed styles
       (gradients, grid backdrops) as style attributes, and 'unsafe-inline' for
       styles alone does not enable script execution. It also names Fontshare
@@ -102,7 +113,7 @@ def security_headers(is_production: bool) -> Dict[str, str]:
     """
     csp = "; ".join([
         "default-src 'self'",
-        "script-src 'self'",
+        f"script-src 'self' {CLERK_SCRIPT_ORIGIN}",
         f"style-src 'self' 'unsafe-inline' {FONT_STYLESHEET_ORIGIN}",
         "img-src 'self' data: https:",
         # Fonts are inert content, so an https: wildcard here buys convenience
