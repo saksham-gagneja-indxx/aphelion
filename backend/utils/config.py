@@ -35,7 +35,7 @@ class Settings(BaseSettings):
 
     # Gemini (Google) settings
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-pro-latest", alias="GEMINI_MODEL")
 
     # ============ INSTAGRAM SETTINGS ============
     instagram_username: str = Field(alias="INSTAGRAM_USERNAME")
