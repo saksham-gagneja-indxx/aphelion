@@ -325,7 +325,11 @@ function Shell({
     refetchInterval: 60_000,
     retry: false,
   })
-  const pendingApprovals = stats?.users.pending_approval ?? 0
+  // Optional-chain all the way down, not just the first hop. `stats?.users`
+  // guards a missing response but not a response whose shape moved, and this
+  // badge is not worth an ErrorBoundary: a malformed /api/admin/stats would
+  // white-screen the entire app over a number in the corner.
+  const pendingApprovals = stats?.users?.pending_approval ?? 0
 
   return (
     <div className="relative min-h-full bg-ink-950">
@@ -354,7 +358,7 @@ function Shell({
                   /* Active is a violet underline, not a filled chip — the fill
                      treatment belongs to the primary button alone. */
                   className={({ isActive }) =>
-                    `flex shrink-0 items-center gap-2 border-b-2 px-3 py-1.5 text-[15px] whitespace-nowrap transition ${
+                    `flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-[15px] whitespace-nowrap transition ${
                       isActive
                         ? 'border-violet-500 text-mist-50'
                         : 'border-transparent text-mist-500 hover:text-mist-50'

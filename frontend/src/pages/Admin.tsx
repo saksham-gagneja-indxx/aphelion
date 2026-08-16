@@ -183,7 +183,7 @@ export default function Admin() {
                           })
                         }
                         disabled={user.id === me.id || roleMutation.isPending}
-                        className="border border-line bg-ink-800 px-2.5 py-1 text-[14px] text-mist-50 transition focus:border-violet-500 focus:outline-none disabled:opacity-40"
+                        className="min-h-11 border border-line bg-ink-800 px-2.5 text-[14px] text-mist-50 transition focus:border-violet-500 focus:outline-none disabled:opacity-40"
                       >
                         <option value="operator">Operator</option>
                         <option value="admin">Admin</option>
@@ -214,22 +214,32 @@ export default function Admin() {
                           })
                         }
                         disabled={user.id === me.id || activeMutation.isPending}
-                        /* Square track, square knob — the system has no pills. */
-                        className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center border p-0.5 transition disabled:opacity-40 ${
-                          user.is_active
-                            ? 'border-violet-500 bg-violet-500'
-                            : 'border-line bg-ink-800'
-                        }`}
+                        role="switch"
+                        aria-checked={user.is_active}
+                        aria-label={`${user.is_active ? 'Deactivate' : 'Activate'} ${user.name}`}
+                        /* The button is a 44px hit area; the track inside it
+                           stays 20px. A control this small is otherwise the
+                           hardest thing in the app to hit on a phone, and it
+                           deactivates a colleague's account. */
+                        className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-end disabled:opacity-40"
                       >
-                        <span className="sr-only">Use setting</span>
+                        {/* Square track, square knob — the system has no pills. */}
                         <span
                           aria-hidden="true"
-                          className={`pointer-events-none inline-block h-[14px] w-[14px] transition duration-200 ease-in-out ${
+                          className={`relative inline-flex h-5 w-10 shrink-0 items-center border p-0.5 transition ${
                             user.is_active
-                              ? 'translate-x-[20px] bg-mist-50'
-                              : 'translate-x-0 bg-mist-500'
+                              ? 'border-violet-500 bg-violet-500'
+                              : 'border-line bg-ink-800'
                           }`}
-                        />
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-[14px] w-[14px] transition duration-200 ease-in-out ${
+                              user.is_active
+                                ? 'translate-x-[20px] bg-mist-50'
+                                : 'translate-x-0 bg-mist-500'
+                            }`}
+                          />
+                        </span>
                       </button>
                     </span>
                   </div>
