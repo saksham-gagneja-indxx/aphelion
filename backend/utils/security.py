@@ -171,7 +171,21 @@ def require_admin() -> Optional[tuple]:
 
     Machine callers holding the API key are treated as administrators: the key
     is already full-privilege, so refusing it here would protect nothing.
+
+    A CORS preflight carries no Authorization header (same reason
+    authenticate_request() skips it - see there), so current_user() is always
+    None for one and this would otherwise 403 every OPTIONS request to an
+    admin blueprint. Browsers treat a non-2xx preflight response as a failed
+    CORS check regardless of what headers came with it, so that 403 doesn't
+    read as "not an admin" - it reads as "CORS is broken here", on every
+    admin/console request, from every origin, including ones that ARE
+    correctly allowlisted. Found live: the admin and console pages on
+    postpilot-sandy.vercel.app looked exactly like a missing-origin CORS bug
+    from the browser console, and the actual allowlist was never the problem.
     """
+    if request.method == "OPTIONS":
+        return None
+
     if getattr(g, "is_machine", False):
         return None
 
