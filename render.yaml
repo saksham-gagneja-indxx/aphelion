@@ -26,6 +26,11 @@
 #   * the Vercel project needs VITE_API_URL set to this service's URL, at BUILD
 #     time — Vite inlines it, so changing it needs a redeploy, not a restart.
 #   * CORS_ORIGINS here must list the Vercel origin exactly, scheme included.
+#     This is enforced, not advisory: FLASK_ENV is production below, and in
+#     production a `*` or a localhost origin is refused and dropped from the
+#     allowlist. Leave CORS_ORIGINS at its localhost default and the allowlist
+#     ends up empty, which blocks every browser request. The startup log says
+#     so explicitly.
 #   * LINKEDIN_REDIRECT_URI must match an Authorized redirect URL on the
 #     LinkedIn app character for character, and points at THIS service.
 # ============================================================================

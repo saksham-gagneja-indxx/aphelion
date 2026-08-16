@@ -153,6 +153,9 @@ def reply(text="", tools=None, stop="end_turn"):
 def configured(monkeypatch):
     monkeypatch.setenv("CLAUDE_API_KEY", REAL_KEY)
     monkeypatch.setenv("ENABLE_CAPTION_GENERATION", "true")
+    # See the note in test_captions.py: these tests patch the Anthropic SDK, so
+    # the provider has to be pinned rather than inherited from the default.
+    monkeypatch.setenv("LLM_PROVIDER", "claude")
 
 
 def test_a_turn_that_fills_everything_reports_ready(configured):
@@ -297,6 +300,9 @@ def app(monkeypatch, tmp_path):
     monkeypatch.setenv("CLAUDE_API_KEY", REAL_KEY)
     monkeypatch.setenv("ENABLE_CAPTION_GENERATION", "true")
     monkeypatch.setenv("REELS_FOLDER", str(tmp_path / "reels"))
+    # See the note in test_captions.py: these patch the Anthropic SDK, so the
+    # provider has to be pinned rather than inherited.
+    monkeypatch.setenv("LLM_PROVIDER", "claude")
 
     import backend.core.reel_manager as reel_manager
     import backend.utils.database as database
