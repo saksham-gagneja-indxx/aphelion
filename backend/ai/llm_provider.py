@@ -741,15 +741,20 @@ class NvidiaNimProvider(LLMProvider):
             + '{"captions": [{"angle": "...", "text": "..."}, ...]} with exactly three entries.'
         )
 
-        # 30B model with a reasoning parser can spend a chunk of the token
-        # budget on internal reasoning before it ever emits the JSON body, so
-        # this needs real headroom - 2048 truncated the answer mid-string in
-        # testing.
-        CAPTION_MAX_TOKENS = 8192
+        # Increased to accommodate JSON schema response format
+        CAPTION_MAX_TOKENS = 4096
 
         try:
+            # Build model name with nvidia/ prefix if not already present
+            model = self.settings.nvidia_model
+            if not model.startswith("nvidia/"):
+                model = f"nvidia/{model}"
+
+            # No reasoning for instant caption generation
+            extra_body = {}
+
             response = self.client.chat.completions.create(
-                model=self.settings.nvidia_model,
+                model=model,
                 max_tokens=CAPTION_MAX_TOKENS,
                 temperature=0.7,
                 messages=[
@@ -760,6 +765,7 @@ class NvidiaNimProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {"name": "captions", "schema": CAPTION_SCHEMA},
                 },
+                **({"extra_body": extra_body} if extra_body else {}),
             )
         except openai.AuthenticationError:
             raise CaptionError(
@@ -778,13 +784,14 @@ class NvidiaNimProvider(LLMProvider):
             # retry once without it and rely on the prompt instruction alone.
             try:
                 response = self.client.chat.completions.create(
-                    model=self.settings.nvidia_model,
+                    model=model,
                     max_tokens=CAPTION_MAX_TOKENS,
                     temperature=0.7,
                     messages=[
                         {"role": "system", "content": schema_system},
                         {"role": "user", "content": user_content},
                     ],
+                    **({"extra_body": extra_body} if extra_body else {}),
                 )
             except Exception:
                 raise CaptionError(

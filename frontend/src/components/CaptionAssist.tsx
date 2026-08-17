@@ -10,9 +10,8 @@
  * unconfigured, rather than offering a button that always errors.
  */
 import { useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import {
-  getCaptionStatus,
   suggestCaptions,
   type CaptionOption,
 } from '../api/captions'
@@ -31,22 +30,10 @@ export default function CaptionAssist({
   const [brief, setBrief] = useState('')
   const [options, setOptions] = useState<CaptionOption[]>([])
 
-  const status = useQuery({
-    queryKey: ['captionStatus'],
-    queryFn: getCaptionStatus,
-    staleTime: 5 * 60_000,
-    retry: false,
-  })
-
   const suggest = useMutation({
     mutationFn: () => suggestCaptions({ brief, reelFilename, durationSeconds }),
     onSuccess: (res) => setOptions(res.captions),
   })
-
-  // Only render once the server has confirmed it can actually do this. An
-  // errored status query is treated the same as unavailable — better to show
-  // nothing than a control that cannot work.
-  if (!status.data?.available) return null
 
   const canAsk = brief.trim().length > 0 && !suggest.isPending
 

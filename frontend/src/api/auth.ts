@@ -117,12 +117,16 @@ export async function getMe(): Promise<User> {
   return res.json()
 }
 
-export async function logout(): Promise<{ ok: boolean }> {
+export async function logout(clerkSignOut?: () => Promise<void>): Promise<{ ok: boolean }> {
   const res = await apiFetch('/api/logout', { method: 'POST' })
   localStorage.removeItem('smm.session') // Clear client copy immediately
   if (!res.ok) {
     // We still clear the token on 401, which apiFetch does, but if it fails otherwise we throw
     throw await toError(res)
+  }
+  // If Clerk is active, sign out from Clerk too so the session is fully cleared
+  if (clerkSignOut) {
+    await clerkSignOut()
   }
   return res.json()
 }

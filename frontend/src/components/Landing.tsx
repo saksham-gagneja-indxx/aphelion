@@ -261,7 +261,7 @@ export default function Landing() {
           <div aria-label="Reel Automation">
             <BoltLogo width={44} height={40} className="text-mist-50" />
           </div>
-          <div className="hidden items-center gap-8 pl-[150px] sm:flex">
+          <div className="hidden items-center gap-8 pl-[130px] sm:flex">
             <a href="#product" className="text-[16px] text-mist-500 hover:text-mist-50">
               Product
             </a>
