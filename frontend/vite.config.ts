@@ -13,11 +13,17 @@ import { resolve } from 'node:path'
 // so the dev proxy points at localhost. Override with VITE_API_TARGET to aim
 // at a tunnel or a hosted instance.
 const DEFAULT_API_TARGET = 'http://127.0.0.1:5000'
+const DEFAULT_API_URL = 'https://social-media-manager-api-wk5g.onrender.com'
 
 export default defineConfig(({ mode }) => {
   const envDir = resolve(process.cwd(), '..')
   const env = loadEnv(mode, envDir, '')
   const target = env.VITE_API_TARGET || DEFAULT_API_TARGET
+
+  // Ensure VITE_API_URL is set for production builds
+  if (mode === 'production' && !process.env.VITE_API_URL) {
+    process.env.VITE_API_URL = DEFAULT_API_URL
+  }
 
   // changeOrigin rewrites the Host header, which Render needs to route the
   // request to the right service.
