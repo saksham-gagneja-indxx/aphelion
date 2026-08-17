@@ -748,8 +748,21 @@ class NvidiaNimProvider(LLMProvider):
         CAPTION_MAX_TOKENS = 8192
 
         try:
+            # Build model name with nvidia/ prefix if not already present
+            model = self.settings.nvidia_model
+            if not model.startswith("nvidia/"):
+                model = f"nvidia/{model}"
+
+            # Use reasoning for better caption quality on Nemotron
+            extra_body = {}
+            if "nemotron" in model.lower():
+                extra_body = {
+                    "chat_template_kwargs": {"enable_thinking": True},
+                    "reasoning_budget": CAPTION_MAX_TOKENS // 2,
+                }
+
             response = self.client.chat.completions.create(
-                model=self.settings.nvidia_model,
+                model=model,
                 max_tokens=CAPTION_MAX_TOKENS,
                 temperature=0.7,
                 messages=[
@@ -760,6 +773,7 @@ class NvidiaNimProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {"name": "captions", "schema": CAPTION_SCHEMA},
                 },
+                **({"extra_body": extra_body} if extra_body else {}),
             )
         except openai.AuthenticationError:
             raise CaptionError(
@@ -778,13 +792,14 @@ class NvidiaNimProvider(LLMProvider):
             # retry once without it and rely on the prompt instruction alone.
             try:
                 response = self.client.chat.completions.create(
-                    model=self.settings.nvidia_model,
+                    model=model,
                     max_tokens=CAPTION_MAX_TOKENS,
                     temperature=0.7,
                     messages=[
                         {"role": "system", "content": schema_system},
                         {"role": "user", "content": user_content},
                     ],
+                    **({"extra_body": extra_body} if extra_body else {}),
                 )
             except Exception:
                 raise CaptionError(
