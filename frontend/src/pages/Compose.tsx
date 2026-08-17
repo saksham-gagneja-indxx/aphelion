@@ -641,7 +641,7 @@ export default function Compose() {
           )}
         </Step>
 
-        <Step n={2} title="Caption" muted={!chosen && upload.phase !== 'done'}>
+        <Step n={2} title="Caption" muted={false}>
           <textarea
             value={caption}
             onChange={(e) => {
@@ -650,7 +650,7 @@ export default function Compose() {
             }}
             onClick={() => {
               // Open assistant on click to suggest captions
-              if (!caption && (chosen || (upload.phase === 'uploading' && upload.uploaded))) {
+              if (!caption) {
                 setAssistantOpen(true)
               }
             }}
@@ -658,7 +658,7 @@ export default function Compose() {
             placeholder="What is this about? (Click to get suggestions)"
             className={FIELD}
           />
-          {(chosen || upload.phase === 'done') && (
+          {(chosen || (upload.phase === 'done' || upload.phase === 'uploading')) && (
             <CaptionAssist
               reelFilename={chosen?.filename ?? upload.uploaded?.filename ?? ''}
               durationSeconds={chosen?.duration ?? upload.uploaded?.duration_seconds ?? 0}
