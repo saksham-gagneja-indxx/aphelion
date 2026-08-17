@@ -741,8 +741,8 @@ class NvidiaNimProvider(LLMProvider):
             + '{"captions": [{"angle": "...", "text": "..."}, ...]} with exactly three entries.'
         )
 
-        # Reduced for instant generation (no reasoning overhead)
-        CAPTION_MAX_TOKENS = 2048
+        # Increased to accommodate JSON schema response format
+        CAPTION_MAX_TOKENS = 4096
 
         try:
             # Build model name with nvidia/ prefix if not already present
