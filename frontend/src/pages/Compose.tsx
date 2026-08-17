@@ -641,7 +641,7 @@ export default function Compose() {
           )}
         </Step>
 
-        <Step n={2} title="Caption" muted={!chosen}>
+        <Step n={2} title="Caption" muted={!chosen && upload.phase !== 'uploading'}>
           <textarea
             value={caption}
             onChange={(e) => {
