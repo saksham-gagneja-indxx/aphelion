@@ -21,6 +21,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { formatBytes } from '../api/validation'
+import { apiFetch } from '../api/auth'
 import {
   createPost,
   listReels,
@@ -206,11 +207,8 @@ function UndoPublishPopup({ postId }: { postId: number | undefined }) {
     if (!postId) return
     setIsUndoing(true)
     try {
-      const res = await fetch(`/api/posts/${postId}/published`, {
+      const res = await apiFetch(`/api/posts/${postId}/published`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('smm.session') || ''}`,
-        },
       })
       if (res.ok) {
         setUndoResult('success')

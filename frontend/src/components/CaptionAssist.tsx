@@ -10,9 +10,8 @@
  * unconfigured, rather than offering a button that always errors.
  */
 import { useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import {
-  getCaptionStatus,
   suggestCaptions,
   type CaptionOption,
 } from '../api/captions'
