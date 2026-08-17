@@ -8,6 +8,7 @@ import {
   logout,
   onSessionChangedInAnotherTab,
   type User,
+  CLERK_ENABLED,
 } from './api/auth'
 import { getAdminStats } from './api/admin'
 import { CurrentUserProvider } from './current-user'
@@ -133,15 +134,15 @@ function BottomNav({
   )
 }
 
-function UserMenu({ user }: { user: User }) {
+/** Inner UserMenu that can safely use Clerk if available */
+function UserMenuInner({ user, clerkSignOut }: { user: User; clerkSignOut?: () => Promise<void> }) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
-  const clerk = useClerk()
 
   const logoutMutation = useMutation({
-    mutationFn: () => logout(clerk?.signOut),
+    mutationFn: () => logout(clerkSignOut),
     onSuccess: () => {
       // Invalidate 'me' to immediately trigger the login gate
       queryClient.setQueryData(['me'], null)
@@ -291,6 +292,20 @@ function UserMenu({ user }: { user: User }) {
       </div>
     </div>
   )
+}
+
+/** Wrapper that conditionally provides Clerk's signOut to UserMenuInner */
+function UserMenu({ user }: { user: User }) {
+  if (CLERK_ENABLED) {
+    return <UserMenuWithClerk user={user} />
+  }
+  return <UserMenuInner user={user} />
+}
+
+/** Version of UserMenu that uses Clerk signOut */
+function UserMenuWithClerk({ user }: { user: User }) {
+  const clerk = useClerk()
+  return <UserMenuInner user={user} clerkSignOut={clerk?.signOut} />
 }
 
 export default function App() {
