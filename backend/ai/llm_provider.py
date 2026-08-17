@@ -753,12 +753,12 @@ class NvidiaNimProvider(LLMProvider):
             if not model.startswith("nvidia/"):
                 model = f"nvidia/{model}"
 
-            # Use reasoning for better caption quality on Nemotron
+            # Use minimal reasoning for faster caption generation on Nemotron
             extra_body = {}
             if "nemotron" in model.lower():
                 extra_body = {
                     "chat_template_kwargs": {"enable_thinking": True},
-                    "reasoning_budget": CAPTION_MAX_TOKENS // 2,
+                    "reasoning_budget": 512,  # Fast generation: minimal reasoning
                 }
 
             response = self.client.chat.completions.create(
