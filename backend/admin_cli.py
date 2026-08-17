@@ -129,6 +129,44 @@ def cmd_promote(args) -> int:
         db.close()
 
 
+def cmd_set_github(args) -> int:
+    """Map a GitHub login to a backend account, for the MCP connector.
+
+    The MCP server authenticates a caller via GitHub OAuth and asks the
+    backend "which account does this GitHub login act as" - see
+    /api/users/by-github/<username> in routes.py. This is the admin side of
+    that mapping. Deliberately CLI-only for now: letting a user set their own
+    github_username would let anyone claim an account by GitHub login alone,
+    with no proof they actually control it.
+    """
+    db = get_session()
+    try:
+        user = _find(db, args.who)
+        if user is None:
+            print(f"No account matching {args.who!r}.", file=sys.stderr)
+            return 1
+
+        clash = (
+            db.query(User)
+            .filter(User.github_username == args.github_username, User.id != user.id)
+            .first()
+        )
+        if clash is not None:
+            print(
+                f"GitHub login {args.github_username!r} is already mapped to "
+                f"account {clash.id} ({clash.full_name or 'unnamed'}).",
+                file=sys.stderr,
+            )
+            return 1
+
+        user.github_username = args.github_username
+        db.commit()
+        print(f"GitHub login {args.github_username!r} now acts as account {user.id} ({user.full_name or 'unnamed'}).")
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_demote(args) -> int:
     db = get_session()
     try:
@@ -300,6 +338,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("demote", help="make an account an operator")
     p.add_argument("who", help="user id or email")
     p.set_defaults(func=cmd_demote)
+
+    p = sub.add_parser("set-github", help="map a GitHub login to an account, for the MCP connector")
+    p.add_argument("who", help="user id or email")
+    p.add_argument("github_username", help="GitHub login the MCP connector should map to this account")
+    p.set_defaults(func=cmd_set_github)
 
     p = sub.add_parser("pin", help="write admin LinkedIn subs into .env")
     p.add_argument("who", nargs="?", help="user id or email (default: all admins)")
