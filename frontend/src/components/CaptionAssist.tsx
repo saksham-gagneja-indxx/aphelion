@@ -36,6 +36,7 @@ export default function CaptionAssist({
     queryFn: getCaptionStatus,
     staleTime: 5 * 60_000,
     retry: false,
+    throwOnError: false,
   })
 
   const suggest = useMutation({
