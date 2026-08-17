@@ -650,16 +650,14 @@ export default function Compose() {
             placeholder="What is this about?"
             className={FIELD}
           />
-          {(chosen || upload.uploaded) && (
-            <CaptionAssist
-              reelFilename={chosen?.filename ?? upload.uploaded?.filename ?? ''}
-              durationSeconds={chosen?.duration ?? upload.uploaded?.duration_seconds ?? 0}
-              onPick={(text) => {
-                setCaption(text)
-                setCaptionFromAssist(true)
-              }}
-            />
-          )}
+          <CaptionAssist
+            reelFilename={chosen?.filename ?? upload.uploaded?.filename ?? ''}
+            durationSeconds={chosen?.duration ?? upload.uploaded?.duration_seconds ?? 0}
+            onPick={(text) => {
+              setCaption(text)
+              setCaptionFromAssist(true)
+            }}
+          />
         </Step>
 
         <Step n={3} title="When" muted={!chosen}>
