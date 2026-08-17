@@ -648,17 +648,11 @@ export default function Compose() {
               setCaption(e.target.value)
               setCaptionFromAssist(false)
             }}
-            onClick={() => {
-              // Open assistant on click to suggest captions
-              if (!caption) {
-                setAssistantOpen(true)
-              }
-            }}
             rows={4}
-            placeholder="What is this about? (Click to get suggestions)"
+            placeholder="What is this about?"
             className={FIELD}
           />
-          {(chosen || (upload.phase === 'done' || upload.phase === 'uploading')) && (
+          {(chosen || upload.uploaded) && (
             <CaptionAssist
               reelFilename={chosen?.filename ?? upload.uploaded?.filename ?? ''}
               durationSeconds={chosen?.duration ?? upload.uploaded?.duration_seconds ?? 0}
