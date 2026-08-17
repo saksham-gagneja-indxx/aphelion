@@ -116,6 +116,149 @@ function Step({
   )
 }
 
+/** Progress bar during publish/schedule that animates to show activity */
+function PublishProgress({ timing }: { timing: Timing }) {
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    if (timing === 'now') {
+      // Publish flow: 5s upload (0-30%), 20s transcoding (30-90%), jump to 100%
+      const uploadEnd = 5000
+
+      const intervals = [
+        // Upload phase: ramp 0→30% in 5s
+        setInterval(() => {
+          setProgress((p) => {
+            if (p < 30) return Math.min(p + 6, 30)
+            return p
+          })
+        }, 250),
+
+        // Start transcoding after 5s: ramp 30→90% over next 20s
+        setTimeout(
+          () => {
+            setInterval(() => {
+              setProgress((p) => {
+                if (p >= 30 && p < 90) return Math.min(p + 3, 90)
+                return p
+              })
+            }, 250)
+          },
+          uploadEnd,
+        ),
+      ]
+
+      return () => {
+        if (typeof intervals[0] === 'number') clearInterval(intervals[0])
+        if (typeof intervals[1] === 'number') clearTimeout(intervals[1])
+      }
+    } else {
+      // Schedule flow: quick ramp to 100% (just creating a database record)
+      const interval = setInterval(() => {
+        setProgress((p) => Math.min(p + 20, 100))
+      }, 100)
+      return () => clearInterval(interval)
+    }
+  }, [timing])
+
+  return (
+    <>
+      <div className="h-2 overflow-hidden rounded bg-ink-800">
+        <div
+          className="h-full animate-shimmer bg-[linear-gradient(90deg,#48008C,#8A05FF,#C29EFF)] bg-[length:260px_100%] transition-all"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className={`${META}`}>
+        {progress < 50
+          ? 'Uploading video…'
+          : progress < 95
+            ? 'LinkedIn is transcoding…'
+            : 'Almost there…'}
+      </p>
+    </>
+  )
+}
+
+/** Undo popup that appears after publish, allowing retraction within 15 seconds */
+function UndoPublishPopup({ postId }: { postId: number | undefined }) {
+  const [timeLeft, setTimeLeft] = useState(15)
+  const [isUndoing, setIsUndoing] = useState(false)
+  const [undoResult, setUndoResult] = useState<'success' | 'error' | null>(null)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((t) => t - 1)
+    }, 1000)
+
+    if (timeLeft <= 0) {
+      clearInterval(interval)
+    }
+
+    return () => clearInterval(interval)
+  }, [timeLeft])
+
+  if (timeLeft <= 0) {
+    return null
+  }
+
+  const handleUndo = async () => {
+    if (!postId) return
+    setIsUndoing(true)
+    try {
+      const res = await fetch(`/api/posts/${postId}/published`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('smm.session') || ''}`,
+        },
+      })
+      if (res.ok) {
+        setUndoResult('success')
+        setTimeout(() => setTimeLeft(0), 1500)
+      } else {
+        setUndoResult('error')
+      }
+    } catch (error) {
+      setUndoResult('error')
+    } finally {
+      setIsUndoing(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 border border-line border-l-2 border-l-orange-500 bg-ink-900 px-4 py-3.5">
+      {undoResult === 'success' ? (
+        <p className="text-[15px] text-mist-50">✓ Post removed from LinkedIn</p>
+      ) : undoResult === 'error' ? (
+        <p className="text-[15px] text-danger-soft">Could not retract post. Try from the queue.</p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[15px] text-mist-200">
+              Undo? You have{' '}
+              <span className="font-semibold text-mist-50">{timeLeft}s</span>
+            </p>
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={isUndoing}
+              className="shrink-0 rounded bg-orange-500/20 px-3 py-1.5 text-[14px] text-orange-300 transition hover:bg-orange-500/30 disabled:opacity-50"
+            >
+              {isUndoing ? 'Retracting…' : 'Retract'}
+            </button>
+          </div>
+          <div className="mt-2 h-1 overflow-hidden bg-ink-800">
+            <div
+              className="h-full bg-orange-500 transition-all"
+              style={{ width: `${(timeLeft / 15) * 100}%` }}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function Compose() {
   const USER_ID = useUserId()
   const user = useCurrentUser()
@@ -130,6 +273,7 @@ export default function Compose() {
   const [picked, setPicked] = useState<Reel | null>(null)
   const [when, setWhen] = useState('')
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [lastPublishedPostId, setLastPublishedPostId] = useState<number | null>(null)
 
   const upload = useSyncExternalStore(subscribe, getSnapshot)
   const busy = isBusy(upload)
@@ -186,9 +330,15 @@ export default function Compose() {
       })
       if (!created?.id) throw new Error('Could not determine the new post id')
 
-      return timing === 'now'
-        ? { kind: 'published' as const, result: await publishNow(created.id) }
-        : { kind: 'scheduled' as const, result: await schedulePost(created.id, when) }
+      const result = timing === 'now'
+        ? { kind: 'published' as const, result: await publishNow(created.id), postId: created.id }
+        : { kind: 'scheduled' as const, result: await schedulePost(created.id, when), postId: created.id }
+
+      if (result.kind === 'published') {
+        setLastPublishedPostId(result.postId)
+      }
+
+      return result
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['posts', USER_ID] })
@@ -543,28 +693,33 @@ export default function Compose() {
           )}
 
           {submit.isSuccess ? (
-            <div className="mt-5 border border-line border-l-2 border-l-violet-500 bg-ink-900 px-4 py-3.5">
-              {submit.data.kind === 'published' ? (
-                <>
-                  <p className="text-[16px] text-mist-50">Published to LinkedIn</p>
-                  <a href={submit.data.result.url} target="_blank" rel="noreferrer"
-                    className="mt-1 inline-block break-all text-[15px] text-violet-300 underline">
-                    {submit.data.result.url}
-                  </a>
-                </>
-              ) : (
-                <>
-                  <p className="text-[16px] text-mist-50">Scheduled</p>
-                  <p className={`${META} mt-1`}>
-                    Track it in the{' '}
-                    <Link to="/queue" className="text-violet-300 underline underline-offset-2">
-                      queue
-                    </Link>
-                    .
-                  </p>
-                </>
+            <>
+              <div className="mt-5 border border-line border-l-2 border-l-violet-500 bg-ink-900 px-4 py-3.5">
+                {submit.data.kind === 'published' ? (
+                  <>
+                    <p className="text-[16px] text-mist-50">Published to LinkedIn</p>
+                    <a href={submit.data.result.url} target="_blank" rel="noreferrer"
+                      className="mt-1 inline-block break-all text-[15px] text-violet-300 underline">
+                      {submit.data.result.url}
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[16px] text-mist-50">Scheduled</p>
+                    <p className={`${META} mt-1`}>
+                      Track it in the{' '}
+                      <Link to="/queue" className="text-violet-300 underline underline-offset-2">
+                        queue
+                      </Link>
+                      .
+                    </p>
+                  </>
+                )}
+              </div>
+              {submit.data.kind === 'published' && (
+                <UndoPublishPopup postId={lastPublishedPostId ?? undefined} />
               )}
-            </div>
+            </>
           ) : (
             <>
               <button
@@ -581,10 +736,10 @@ export default function Compose() {
                     ? 'Post to LinkedIn now'
                     : 'Schedule post'}
               </button>
-              {submit.isPending && timing === 'now' && (
-                <p className={`${META} mt-3`}>
-                  LinkedIn is transcoding the video — this can take up to a minute.
-                </p>
+              {submit.isPending && (
+                <div className="mt-4 space-y-2">
+                  <PublishProgress timing={timing} />
+                </div>
               )}
               {submit.isError && (
                 <p className="mt-3 text-[15px] text-danger-soft">
