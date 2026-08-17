@@ -741,11 +741,8 @@ class NvidiaNimProvider(LLMProvider):
             + '{"captions": [{"angle": "...", "text": "..."}, ...]} with exactly three entries.'
         )
 
-        # 30B model with a reasoning parser can spend a chunk of the token
-        # budget on internal reasoning before it ever emits the JSON body, so
-        # this needs real headroom - 2048 truncated the answer mid-string in
-        # testing.
-        CAPTION_MAX_TOKENS = 8192
+        # Reduced for instant generation (no reasoning overhead)
+        CAPTION_MAX_TOKENS = 2048
 
         try:
             # Build model name with nvidia/ prefix if not already present
@@ -753,13 +750,8 @@ class NvidiaNimProvider(LLMProvider):
             if not model.startswith("nvidia/"):
                 model = f"nvidia/{model}"
 
-            # Use minimal reasoning for faster caption generation on Nemotron
+            # No reasoning for instant caption generation
             extra_body = {}
-            if "nemotron" in model.lower():
-                extra_body = {
-                    "chat_template_kwargs": {"enable_thinking": True},
-                    "reasoning_budget": 512,  # Fast generation: minimal reasoning
-                }
 
             response = self.client.chat.completions.create(
                 model=model,
