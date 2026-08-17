@@ -10,6 +10,7 @@ import {
 	listReels,
 	normalizeBackendEnv,
 	publishNow,
+	resolveUserId,
 	schedulePost,
 	suggestCaptions,
 	type BackendEnv,
@@ -25,10 +26,11 @@ type Props = {
 };
 
 /**
- * Who may call these tools at all. This is a GATE, not an identity mapping —
- * every tool always acts against BACKEND_USER_ID (see backend-client.ts),
- * regardless of which allowed GitHub user is currently connected. Add
- * usernames as a comma-separated ALLOWED_GITHUB_USERNAMES secret.
+ * Who may call these tools at all - a coarse gate, independent of identity.
+ * A GitHub login also has to resolve to an active backend account (see
+ * resolveUserId in init() below) to get real tools; being on this allowlist
+ * alone is not enough. Add usernames as a comma-separated
+ * ALLOWED_GITHUB_USERNAMES secret.
  */
 function allowedUsers(env: Env): Set<string> {
 	return new Set(
@@ -55,23 +57,58 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	});
 
 	async init() {
-		const backendEnv: BackendEnv = normalizeBackendEnv(this.env);
+		const rawEnv: BackendEnv = normalizeBackendEnv(this.env);
 		const allowed = allowedUsers(this.env);
+		const login = this.props!.login;
 
 		// Fail closed: an empty allowlist means nobody configured it yet, which
 		// should mean nobody gets tools rather than everybody does.
-		if (allowed.size === 0 || !allowed.has(this.props!.login)) {
+		if (allowed.size === 0 || !allowed.has(login)) {
 			this.server.tool(
 				"not_authorized",
 				"This GitHub account is not on the allowlist for this connector.",
 				{},
 				async () => textResult(
-					`${this.props!.login} is not authorized to use this connector. ` +
+					`${login} is not authorized to use this connector. ` +
 					"Ask the owner to add this GitHub username to ALLOWED_GITHUB_USERNAMES.",
 				),
 			);
 			return;
 		}
+
+		// Being allowlisted only says this GitHub identity is *permitted* -
+		// it still has to be mapped to a real backend account (see
+		// backend/admin_cli.py's `set-github`) to know WHICH account it acts
+		// as. Resolved once per session rather than per tool call: the mapping
+		// cannot change mid-conversation, and one lookup keeps every tool call
+		// below simple.
+		let resolved;
+		try {
+			resolved = await resolveUserId(rawEnv, login);
+		} catch (e) {
+			this.server.tool(
+				"not_authorized",
+				"Could not verify this GitHub account against the backend.",
+				{},
+				async () => errorResult(e),
+			);
+			return;
+		}
+
+		if (resolved === null) {
+			this.server.tool(
+				"not_authorized",
+				"This GitHub account has no backend account mapped to it.",
+				{},
+				async () => textResult(
+					`${login} is allowlisted but has no backend account mapped. ` +
+					`Ask the owner to run: python -m backend.admin_cli set-github <user> ${login}`,
+				),
+			);
+			return;
+		}
+
+		const backendEnv: BackendEnv = { ...rawEnv, BACKEND_USER_ID: String(resolved.id) };
 
 		this.server.tool(
 			"list_reels",

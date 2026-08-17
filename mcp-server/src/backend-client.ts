@@ -4,17 +4,53 @@
  * The Worker authenticates as a "machine caller" — a bearer token
  * (BACKEND_API_KEY) with no session — which the backend already supports on
  * every route that takes an explicit user_id (see backend/utils/security.py,
- * require_user_access). BACKEND_USER_ID is fixed per deployment: this
- * connector always acts as the one LinkedIn-connected account it is
- * configured for, never on behalf of whoever happens to be signed in via
- * GitHub. GitHub OAuth gates *who may call these tools at all*; it has no
- * relationship to the backend's own user model.
+ * require_user_access).
+ *
+ * BACKEND_USER_ID in a BackendEnv is resolved PER SESSION, not read as a
+ * fixed secret - see resolveUserId() and index.ts's init(), which looks up
+ * the signed-in GitHub login against /api/users/by-github/<login> and builds
+ * a BackendEnv carrying whichever account that login is mapped to. Multiple
+ * people can use the same deployed connector, each acting as their own
+ * backend account, rather than every GitHub sign-in acting as one hardcoded
+ * user. ALLOWED_GITHUB_USERNAMES (see index.ts) is a separate, independent
+ * gate on top of this - a GitHub login must both be allowlisted AND mapped
+ * to an active account to get real tools instead of the not_authorized one.
  */
 
 export interface BackendEnv {
 	BACKEND_API_URL: string;
 	BACKEND_API_KEY: string;
 	BACKEND_USER_ID: string;
+}
+
+export interface ResolvedUser {
+	id: number;
+	name: string | null;
+	role: string;
+}
+
+/**
+ * Look up which backend account a GitHub login acts as.
+ *
+ * Returns null for "no mapping" or "account inactive" alike - deliberately
+ * not distinguished to the MCP caller, same as the backend route itself
+ * folds both into one 404 (see routes.py's user_by_github): a deactivated
+ * account should look exactly like an unmapped one, not leak that it once
+ * existed.
+ */
+export async function resolveUserId(
+	env: Pick<BackendEnv, "BACKEND_API_URL" | "BACKEND_API_KEY">,
+	githubLogin: string,
+): Promise<ResolvedUser | null> {
+	const res = await fetch(
+		`${env.BACKEND_API_URL}/api/users/by-github/${encodeURIComponent(githubLogin)}`,
+		{ headers: { Authorization: `Bearer ${env.BACKEND_API_KEY}` } },
+	);
+	if (res.status === 404) return null;
+	if (!res.ok) {
+		throw new BackendError(`Could not resolve GitHub identity (${res.status}).`, res.status);
+	}
+	return (await res.json()) as ResolvedUser;
 }
 
 export class BackendError extends Error {
