@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm run build",
+  "buildCommand": "cd frontend && VITE_API_URL=https://social-media-manager-api-wk5g.onrender.com npm run build",
   "outputDirectory": "frontend/dist",
   "framework": "vite",
   "rewrites": [
