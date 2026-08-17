@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { useClerk } from '@clerk/clerk-react'
 import {
   getMe,
   linkedInLoginUrl,
@@ -137,9 +138,10 @@ function UserMenu({ user }: { user: User }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
+  const clerk = useClerk()
 
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: () => logout(clerk?.signOut),
     onSuccess: () => {
       // Invalidate 'me' to immediately trigger the login gate
       queryClient.setQueryData(['me'], null)
