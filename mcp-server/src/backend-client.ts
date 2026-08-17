@@ -25,6 +25,30 @@ export class BackendError extends Error {
 	}
 }
 
+/**
+ * `wrangler secret put` has bitten this project twice: a value copy-pasted
+ * from a source saved as "UTF-8 with BOM" (Windows Notepad's default) carries
+ * an invisible U+FEFF at the front, which `wrangler secret put` uploads
+ * byte-for-byte. That broke `new URL()` outright when it landed in
+ * BACKEND_API_URL, and silently corrupted a path segment when it landed in
+ * BACKEND_USER_ID - both shipped once already (see git history).
+ *
+ * Normalized once here, at the boundary where Cloudflare's raw env crosses
+ * into this module (see index.ts's `backendEnv: BackendEnv = normalizeBackendEnv(this.env)`),
+ * rather than at every call site - every function below can then trust
+ * `BackendEnv`'s fields are clean. `.trim()` strips U+FEFF along with
+ * ordinary whitespace per the WhiteSpace production in the ECMAScript spec,
+ * so this is cheap insurance against the same class of mistake happening a
+ * third time, not just a fix for the two it's already caused.
+ */
+export function normalizeBackendEnv(env: BackendEnv): BackendEnv {
+	return {
+		BACKEND_API_URL: env.BACKEND_API_URL.trim(),
+		BACKEND_API_KEY: env.BACKEND_API_KEY.trim(),
+		BACKEND_USER_ID: env.BACKEND_USER_ID.trim(),
+	};
+}
+
 async function call<T>(
 	env: BackendEnv,
 	method: string,

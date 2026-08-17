@@ -8,6 +8,7 @@ import {
 	composerTurn,
 	createPost,
 	listReels,
+	normalizeBackendEnv,
 	publishNow,
 	schedulePost,
 	suggestCaptions,
@@ -54,7 +55,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	});
 
 	async init() {
-		const backendEnv: BackendEnv = this.env;
+		const backendEnv: BackendEnv = normalizeBackendEnv(this.env);
 		const allowed = allowedUsers(this.env);
 
 		// Fail closed: an empty allowlist means nobody configured it yet, which
