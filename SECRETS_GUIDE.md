@@ -13,8 +13,11 @@ GITHUB_CLIENT_SECRET=c204867958523a873fdd0211ca54d9d3db44cb8c
 ### Backend API
 ```
 BACKEND_API_URL=https://social-media-manager-api-wk5g.onrender.com
-BACKEND_API_KEY=mh8K8HLkaqT3_jGo1TECr66lYfBjyMjoMh0NYNtJAh0
+BACKEND_API_KEY=3BoAVTsdDuaFhJiJ-gvBoZSVyNM5qvXOBAocsiFWmqzlMVVIT7o0zA
+BACKEND_USER_ID=0
 ```
+
+`BACKEND_API_KEY` above is the value actually live on Render right now (the guide previously listed a stale one that no longer matches - verify against the deployed key before trusting a copy of this file). `BACKEND_USER_ID` is a required placeholder only: the multi-tenant MCP resolves the real per-session user id from the caller's GitHub login (see `mcp-server/src/index.ts`'s `resolveUserId`) and overwrites this value before any tool call, but `normalizeBackendEnv()` dereferences it unconditionally on startup, so the secret must still exist or every session crashes before reaching that logic.
 
 ### Allowed Users
 ```
@@ -65,7 +68,8 @@ GITHUB_CLIENT_SECRET=c204867958523a873fdd0211ca54d9d3db44cb8c
 
 # Backend API
 BACKEND_API_URL=https://social-media-manager-api-wk5g.onrender.com
-BACKEND_API_KEY=mh8K8HLkaqT3_jGo1TECr66lYfBjyMjoMh0NYNtJAh0
+BACKEND_API_KEY=3BoAVTsdDuaFhJiJ-gvBoZSVyNM5qvXOBAocsiFWmqzlMVVIT7o0zA
+BACKEND_USER_ID=0
 
 # Access Control
 ALLOWED_GITHUB_USERNAMES=saksham-gagneja-indxx
@@ -110,7 +114,11 @@ npx wrangler secret put BACKEND_API_URL
 # Paste: https://social-media-manager-api-wk5g.onrender.com
 
 npx wrangler secret put BACKEND_API_KEY
-# Paste: mh8K8HLkaqT3_jGo1TECr66lYfBjyMjoMh0NYNtJAh0
+# Paste: 3BoAVTsdDuaFhJiJ-gvBoZSVyNM5qvXOBAocsiFWmqzlMVVIT7o0zA
+
+npx wrangler secret put BACKEND_USER_ID
+# Paste: 0
+# (placeholder - overwritten per-session by resolveUserId(), but must exist or init() crashes)
 
 npx wrangler secret put ALLOWED_GITHUB_USERNAMES
 # Paste: saksham-gagneja-indxx
@@ -163,7 +171,8 @@ Add each one:
 
 **Backend API:**
 - Name: `BACKEND_API_URL`, Value: `https://social-media-manager-api-wk5g.onrender.com`
-- Name: `BACKEND_API_KEY`, Value: `mh8K8HLkaqT3_jGo1TECr66lYfBjyMjoMh0NYNtJAh0`
+- Name: `BACKEND_API_KEY`, Value: `3BoAVTsdDuaFhJiJ-gvBoZSVyNM5qvXOBAocsiFWmqzlMVVIT7o0zA`
+- Name: `BACKEND_USER_ID`, Value: `0` (placeholder, see note above)
 
 **Access Control:**
 - Name: `ALLOWED_GITHUB_USERNAMES`, Value: `saksham-gagneja-indxx`
@@ -200,6 +209,7 @@ Then reference in workflows as `${{ secrets.GITHUB_CLIENT_ID }}`, etc.
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth secret | GitHub Settings → Developer settings → OAuth Apps |
 | `BACKEND_API_URL` | Render backend server URL | https://social-media-manager-api-wk5g.onrender.com |
 | `BACKEND_API_KEY` | API authentication key | Generated during backend setup |
+| `BACKEND_USER_ID` | Placeholder only - real per-session id comes from GitHub login resolution | Set to `0`, never read for real routing |
 | `ALLOWED_GITHUB_USERNAMES` | Who can use the MCP | Your GitHub username |
 | `COOKIE_ENCRYPTION_KEY` | Encrypts session cookies | Generated secret key |
 | `SECRET_KEY` | Flask session secret | Generated secret key |
