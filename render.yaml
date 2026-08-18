@@ -1,111 +1,47 @@
-# Render deployment: ONE service serving both the API and the built SPA.
-#
-# Docker rather than Render's native Python runtime because:
-#   * building the SPA needs Node, which the Python runtime does not guarantee
-#   * ffmpeg/ffprobe can be installed, so thumbnails and duration validation
-#     work in production instead of silently degrading
-#
-# One service rather than separate frontend/backend because:
-#   * same origin, so CORS does not apply to the SPA at all
-#   * one custom domain and one reputation to establish - relevant while
-#     *.onrender.com is flagged by Google Safe Browsing
-#   * one free instance instead of two
-#
-# Free-tier limitations still in force:
-#   * the service sleeps after ~15 minutes idle, so APScheduler jobs do NOT
-#     fire reliably. Scheduling needs a paid instance or an external pinger.
-#   * uploaded videos live on an ephemeral disk and are lost on restart. The
-#     database is external (Supabase) and is NOT affected.
-
-# ============================================================================
-# ACTIVE — the backend is deployed to Render again.
-#
-# The frontend is on Vercel and calls this service cross-origin, so two
-# settings have to agree or sign-in breaks in ways that look unrelated:
-#
-#   * the Vercel project needs VITE_API_URL set to this service's URL, at BUILD
-#     time — Vite inlines it, so changing it needs a redeploy, not a restart.
-#   * CORS_ORIGINS here must list the Vercel origin exactly, scheme included.
-#     This is enforced, not advisory: FLASK_ENV is production below, and in
-#     production a `*` or a localhost origin is refused and dropped from the
-#     allowlist. Leave CORS_ORIGINS at its localhost default and the allowlist
-#     ends up empty, which blocks every browser request. The startup log says
-#     so explicitly.
-#   * LINKEDIN_REDIRECT_URI must match an Authorized redirect URL on the
-#     LinkedIn app character for character, and points at THIS service.
-# ============================================================================
-
 services:
   - type: web
-    name: social-media-manager-api
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    plan: free
-    region: singapore
-    healthCheckPath: /health
+    name: postpilot-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 4 -b 0.0.0.0:5000 "backend.app:create_app()"
+
+    env:
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PORT
+        value: "5000"
 
     envVars:
-      # ---- secrets: set in the dashboard, never in git ----
-      - key: DATABASE_URL          # Supabase pooled connection string
+      - key: SECRET_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: API_ACCESS_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false  # From Supabase
+      - key: REDIS_URL
+        sync: false  # From Upstash
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
         sync: false
       - key: LINKEDIN_CLIENT_ID
         sync: false
       - key: LINKEDIN_CLIENT_SECRET
         sync: false
-      - key: LINKEDIN_REDIRECT_URI
-        sync: false
-      - key: API_ACCESS_KEY
-        sync: false
-      - key: SECRET_KEY
-        sync: false
-      # LinkedIn `sub` values allowed to hold the admin role. When set, the
-      # "first account becomes admin" bootstrap is disabled entirely.
-      - key: ADMIN_LINKEDIN_SUBS
-        sync: false
-
-      # The SPA is served from this same origin now, so both point at the
-      # service's own URL.
-      - key: FRONTEND_URL
-        sync: false
-      - key: CORS_ORIGINS
-        sync: false
-
-      - key: LINKEDIN_API_VERSION
-        value: "202607"
-      - key: ALLOW_NEW_SIGNUPS
-        value: "true"
-      # Guest accounts: sandboxed, cannot publish, never administrators.
-      # Set to "false" to require LinkedIn for everyone.
-      - key: ALLOW_GUEST_ACCESS
-        value: "true"
-      - key: FLASK_ENV
-        value: production
-      - key: DEBUG
-        value: "false"
-      - key: TIMEZONE
-        value: Asia/Kolkata
-
-      # Instagram is scaffolded and disabled; these satisfy config validation
-      # without implying a working integration.
-      - key: INSTAGRAM_USERNAME
-        value: your_instagram_username
-      - key: INSTAGRAM_PASSWORD
-        value: your_instagram_password
-      - key: CLAUDE_API_KEY
-        value: sk-ant-placeholder-not-used-in-v1
-
-      # LLM provider for caption assist and the assistant/composer.
-      # "nvidia", "gemini" or "claude". Set the matching *_API_KEY in the
-      # dashboard when using that provider - never in this file.
-      - key: LLM_PROVIDER
-        value: nvidia
       - key: NVIDIA_API_KEY
         sync: false
-      - key: NVIDIA_MODEL
-        value: meta/muse-glimmer-30b
-      - key: NVIDIA_BASE_URL
-        value: https://integrate.api.nvidia.com/v1
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_MODEL
-        value: gemini-pro-latest
+      - key: CORS_ORIGINS
+        value: https://postpilot.vercel.app
+
+    healthCheckPath: /health
+    healthCheckInterval: 30
+    maxInstanceCount: 1
+    plan: free
+
+databases:
+  - name: postpilot-db
+    databaseName: postpilot
+    user: postgres
+    plan: free  # Note: Use Supabase instead for free PostgreSQL
