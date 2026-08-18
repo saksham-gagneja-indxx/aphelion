@@ -86,6 +86,23 @@ data/cache/
 # ============ DOCKER ============
 .dockerignore
 .docker/
+docker-compose.override.yml
+
+# ============ SSL/TLS ============
+ssl/
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+
+# ============ DEPLOYMENT ============
+.env.production
+.env.staging
+*.hcl
+terraform.tfstate*
+*.tfvars
 
 # ============ MISC ============
 .env.db
@@ -97,6 +114,11 @@ data/cache/
 dmypy.json
 node_modules/
 .next/
+dist/
+build/
+*.txt.bak
+backend_error.txt
+backend_output.txt
 
 # ============ CLOUDFLARE WORKERS (mcp-server/) ============
 .wrangler/

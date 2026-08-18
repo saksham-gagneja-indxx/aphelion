@@ -36,8 +36,9 @@ class Post(Base):
     # Primary key
     id = Column(Integer, primary_key=True, index=True)
 
-    # Foreign key
+    # Foreign keys
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    media_file_id = Column(Integer, ForeignKey("media_files.id"), nullable=True)
 
     # Media information
     video_path = Column(String(500), nullable=False)  # Path to video file
@@ -82,8 +83,9 @@ class Post(Base):
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
-    # Relationship
+    # Relationships
     user = relationship("User", back_populates="posts")
+    media_file = relationship("MediaFile", back_populates="posts")
 
     def __repr__(self):
         return f"<Post(id={self.id}, status={self.status}, platform={self.platform})>"

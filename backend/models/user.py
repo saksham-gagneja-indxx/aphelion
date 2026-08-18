@@ -33,10 +33,14 @@ class User(Base):
     # sign-in, LinkedIn purely for publish rights) without collision.
     clerk_id = Column(String(255), unique=True, index=True, nullable=True)
 
-    # GitHub username for MCP authentication. Maps GitHub login → backend user ID.
-    # Used by the MCP Cloudflare Worker to resolve which account a GitHub OAuth
-    # login should act as. Multiple GitHub users can share one deployment if their
-    # usernames are registered to different backend user IDs.
+    # GitHub login, used by the MCP connector to map "who authenticated via
+    # GitHub OAuth" to "which backend account they act as". Independent of
+    # Clerk/LinkedIn sign-in - a person can use the web app via one identity
+    # provider and the MCP connector via GitHub without those being linked.
+    # Set via `python -m backend.admin_cli set-github <user> <login>`; there
+    # is deliberately no self-service way to set this yet; an admin has to
+    # vouch for the mapping since it decides which account a GitHub identity
+    # can act as through the MCP server.
     github_username = Column(String(255), unique=True, index=True, nullable=True)
 
     full_name = Column(String(255), nullable=True)
@@ -119,6 +123,7 @@ class User(Base):
     # Relationships
     posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
     analytics = relationship("Analytics", back_populates="user", cascade="all, delete-orphan")
+    linkedin_credential = relationship("LinkedInCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, instagram={self.instagram_username})>"

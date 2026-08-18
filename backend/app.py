@@ -202,18 +202,30 @@ def create_app():
     # Register blueprints
     from backend.api.routes import api_bp
     from backend.api.auth_routes import auth_bp
+    from backend.api.clerk_auth_routes import clerk_auth_bp
+    from backend.api.linkedin_routes import linkedin_bp
+    from backend.api.media_routes import media_bp
+    from backend.api.caption_generation_routes import caption_bp
+    from backend.api.post_routes import post_bp
+    from backend.api.scheduler_routes import scheduler_bp
     from backend.api.admin_routes import admin_bp
     from backend.api.publish_routes import publish_bp
-    from backend.api.caption_routes import caption_bp
+    from backend.api.caption_routes import caption_bp as caption_bp_legacy
     from backend.api.composer_routes import composer_bp
     from backend.api.guest_routes import guest_bp
     from backend.api.console_routes import console_bp
     from backend.api.integrations_routes import integrations_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(clerk_auth_bp)  # New Clerk-based auth
+    app.register_blueprint(linkedin_bp)  # LinkedIn OAuth & credentials
+    app.register_blueprint(media_bp)  # Media upload & management
+    app.register_blueprint(caption_bp)  # Caption generation
+    app.register_blueprint(post_bp)  # Post creation & publishing
+    app.register_blueprint(scheduler_bp)  # Scheduling & optimal timing
     app.register_blueprint(admin_bp)
     app.register_blueprint(publish_bp)
-    app.register_blueprint(caption_bp)
+    app.register_blueprint(caption_bp_legacy)  # Legacy captions
     app.register_blueprint(composer_bp)
     app.register_blueprint(guest_bp)
     app.register_blueprint(console_bp)
