@@ -61,6 +61,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
 		name: "Reel Automation",
 		version: "1.0.0",
+		description: "LinkedIn reel automation: upload, caption, schedule, and publish videos. Use 'show_available_commands' to see what you can do.",
 	});
 
 	async init() {
@@ -135,24 +136,48 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				(identity.can_publish ? "" : " (⚠ cannot publish: no valid grant)")
 			: "Publishing as: could not verify (identity lookup failed).";
 
-		// Help command - makes Claude aware of all available actions
+		// Getting started guide - Claude will show this first
 		this.server.tool(
-			"show_available_commands",
-			"Show all available commands for managing and posting LinkedIn reels. Use this to see what you can do.",
+			"getting_started",
+			"🎬 Get started with LinkedIn reel automation! Shows available commands and quick workflow.",
 			{},
 			async () => {
 				return textResult(
 					`${identityLine}\n\n` +
-					`📋 **Available Commands:**\n\n` +
-					`1. **list_reels** - See all your uploaded reels ready to post\n` +
-					`2. **suggest_captions** - Get 3 AI-drafted LinkedIn captions for a reel\n` +
-					`3. **draft_post** - Chat with AI to pick a reel, write caption, and set timing\n` +
-					`4. **publish_reel** - Immediately publish a reel with caption to LinkedIn (live!)\n` +
-					`5. **schedule_reel** - Schedule a reel to post later (e.g., tomorrow at 9am)\n\n` +
-					`**Quick Start:**\n` +
-					`→ Start with: "list_reels" to see what you have\n` +
-					`→ Then: "draft_post" to plan what to post\n` +
-					`→ Finally: "publish_reel" or "schedule_reel" to go live\n`
+					`🎯 **Welcome to Reel Automation!**\n\n` +
+					`Here's what you can do right now:\n\n` +
+					`📽️ **list_reels** - See all your uploaded reels\n` +
+					`✍️ **suggest_captions** - Get AI-written LinkedIn captions\n` +
+					`💬 **draft_post** - Plan a post with AI assistance\n` +
+					`🚀 **publish_reel** - Post to LinkedIn NOW (irreversible)\n` +
+					`⏰ **schedule_reel** - Schedule a post for later\n\n` +
+					`**Quick Workflow:**\n` +
+					`1️⃣ list_reels → See what you have\n` +
+					`2️⃣ draft_post → Plan your next post\n` +
+					`3️⃣ publish_reel or schedule_reel → Make it live\n\n` +
+					`👉 **Try this now:** I can help you pick a reel, write a caption, and post it. What would you like to do?\n`
+				);
+			},
+		);
+
+		// Help command - detailed reference
+		this.server.tool(
+			"show_available_commands",
+			"📋 Show all available commands and detailed descriptions.",
+			{},
+			async () => {
+				return textResult(
+					`${identityLine}\n\n` +
+					`**📋 All Available Commands:\n\n` +
+					`1. **list_reels**\n   See all your uploaded reels ready to post\n\n` +
+					`2. **suggest_captions**\n   Get 3 AI-drafted LinkedIn captions for a reel\n\n` +
+					`3. **draft_post**\n   Chat with AI to plan a post (pick reel, write caption, set time)\n\n` +
+					`4. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
+					`5. **schedule_reel**\n   Schedule a reel to post later\n\n` +
+					`**⚡ Pro Tips:**\n` +
+					`• Start with "getting_started" for a quick guide\n` +
+					`• Use "draft_post" to plan before publishing\n` +
+					`• Always check the 'Publishing as' line before publishing\n`
 				);
 			},
 		);
