@@ -3,11 +3,22 @@ Post creation, publishing, and scheduling routes.
 
 Routes:
   POST   /api/posts                - Create draft post
-  POST   /api/posts/{id}/publish   - Publish post to LinkedIn
   POST   /api/posts/{id}/schedule  - Schedule post for later
   GET    /api/posts                - List user's posts
   GET    /api/posts/{id}           - Get post details
   DELETE /api/posts/{id}           - Delete draft post
+
+The publish route that used to live here was a legacy, MediaFile/
+LinkedInCredential-based implementation that only ever ran by accident: it
+registers on the same "/<int:post_id>/publish" path as the current,
+reel/User-based implementation in publish_routes.py, and blueprint
+registration order in app.py happened to let this one shadow that one.
+Because it required a human session via current_user() and rejected the
+machine API-key callers the MCP server and other automation use, every
+publish attempt through those paths failed with a bare "Unauthorized"
+before ever reaching the real LinkedIn integration. Removed rather than
+reordered, to match create/schedule above, which already resolve to the
+current implementation for the same reason.
 """
 
 from flask import Blueprint, request, jsonify
@@ -17,8 +28,6 @@ from backend.models.media_file import MediaFile
 from backend.models.linkedin_credential import LinkedInCredential
 from backend.utils.logger import get_logger
 from backend.utils.security import current_user
-from backend.utils.linkedin_api import check_publish_permissions
-from backend.core.linkedin_publisher import publish_to_linkedin
 from datetime import datetime, timedelta
 import json
 
@@ -149,110 +158,6 @@ def create_post():
             "created_at": post.created_at.isoformat() if post.created_at else None,
             "scheduled_time": None,
         }), 201
-
-    finally:
-        db.close()
-
-
-@post_bp.route("/<int:post_id>/publish", methods=["POST"])
-def publish_post(post_id: int):
-    """
-    Publish a draft post to LinkedIn immediately.
-
-    Request:
-        POST /api/posts/123/publish
-        Authorization: Bearer {session_token}
-
-    Response (200):
-        {
-          "id": 123,
-          "status": "published",
-          "linkedin_post_id": "urn:li:share:1234567890",
-          "posted_at": "2026-08-18T10:05:00Z"
-        }
-
-    Response (401):
-        {
-          "error": "Unauthorized"
-        }
-
-    Response (404):
-        {
-          "error": "Post not found"
-        }
-
-    Response (409):
-        {
-          "error": "Post not in draft status"
-        }
-
-    Response (503):
-        {
-          "error": "LinkedIn publishing service unavailable"
-        }
-    """
-    user = current_user()
-    if user is None:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    db = get_session()
-    try:
-        post = db.query(Post).filter(
-            Post.id == post_id,
-            Post.user_id == user.id,
-        ).first()
-
-        if not post:
-            return jsonify({"error": "Post not found"}), 404
-
-        if post.status != PostStatus.DRAFT:
-            return jsonify({
-                "error": f"Post not in draft status (current: {post.status})"
-            }), 409
-
-        # Get LinkedIn credentials
-        linkedin_cred = db.query(LinkedInCredential).filter(
-            LinkedInCredential.user_id == user.id,
-            LinkedInCredential.is_connected == True,
-        ).first()
-
-        if not linkedin_cred:
-            return jsonify({"error": "LinkedIn credentials not configured"}), 409
-
-        # Get media file
-        media = db.query(MediaFile).filter(
-            MediaFile.id == post.media_file_id
-        ).first()
-
-        try:
-            # Publish to LinkedIn
-            result = publish_to_linkedin(
-                access_token=linkedin_cred.get_access_token(),
-                caption=post.caption,
-                media_file=media,
-                metadata=post.post_metadata,
-            )
-
-            # Update post
-            post.mark_as_posted(result["post_id"], "linkedin")
-            post.linkedin_post_id = result["post_id"]
-            db.commit()
-            db.refresh(post)
-
-            logger.info(f"Post published: {post.id} to LinkedIn by user {user.id}")
-
-            return jsonify({
-                "id": post.id,
-                "status": post.status,
-                "linkedin_post_id": post.linkedin_post_id,
-                "posted_at": post.posted_at.isoformat() if post.posted_at else None,
-            }), 200
-
-        except Exception as e:
-            logger.error(f"LinkedIn publishing failed: {str(e)}")
-            post.mark_as_failed(str(e))
-            db.commit()
-            return jsonify({"error": "LinkedIn publishing service unavailable"}), 503
 
     finally:
         db.close()
