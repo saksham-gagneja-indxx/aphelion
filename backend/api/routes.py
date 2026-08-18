@@ -273,6 +273,19 @@ def create_post():
         reel_manager = get_reel_manager()
         reel_info = reel_manager.get_reel_info(Path(video_path))
         if reel_info is None:
+            # list_reels/draft_post (the MCP tools) only ever surface the
+            # bare filename, never the on-disk path - a caller that echoes
+            # back exactly what it was shown, as the tool descriptions tell
+            # it to, cannot supply anything else. Resolve a bare filename
+            # against this user's own reel directory before giving up, so
+            # "video_path" accepts either form instead of only the one
+            # nothing downstream actually hands out.
+            candidate = reel_manager.reels_folder / str(user_id) / Path(video_path).name
+            reel_info = reel_manager.get_reel_info(candidate)
+            if reel_info is not None:
+                video_path = str(candidate)
+
+        if reel_info is None:
             db.close()
             return jsonify({"error": f"No reel found at '{video_path}'"}), 400
 
