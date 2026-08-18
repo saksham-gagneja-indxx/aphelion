@@ -130,6 +130,88 @@ export const listReels = (env: BackendEnv) =>
 		`/api/users/${env.BACKEND_USER_ID}/reels`,
 	);
 
+/**
+ * Cap on the DECODED size of an upload_reel attachment.
+ *
+ * Base64 has no way through this tool but as a plain string argument in the
+ * tool call, which means it rides through the same context/payload budget as
+ * everything else in the conversation - there is no separate binary channel.
+ * 20MB decoded (~27MB of base64 text) is picked as a "short vertical clip"
+ * ceiling, not a hard platform limit: it is comfortably clear of practical
+ * tool-call size trouble while still fitting a real reel, not just a
+ * few-second test clip.
+ */
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+function base64ToBytes(base64: string): Uint8Array {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
+}
+
+export interface UploadedReel {
+	filename: string;
+	path: string;
+	duration_seconds: number | null;
+	size_bytes: number;
+}
+
+/**
+ * Upload a reel whose bytes arrived as a base64 tool argument - i.e. a file
+ * attached directly in the chat, rather than one already sitting in the
+ * user's reel library via the web app's own upload page (untouched by this:
+ * it POSTs to the exact same /api/upload the web app uses).
+ */
+export async function uploadReel(
+	env: BackendEnv,
+	input: { filename: string; base64Data: string },
+): Promise<{ success: true; message: string; reel: UploadedReel }> {
+	// Roughly 4/3 expansion; checking the encoded string's length avoids
+	// decoding a huge blob just to reject it.
+	const approxBytes = (input.base64Data.length * 3) / 4;
+	if (approxBytes > MAX_UPLOAD_BYTES) {
+		throw new BackendError(
+			`That file is too large to attach directly (~${Math.round(approxBytes / 1024 / 1024)}MB, ` +
+				`limit is ${MAX_UPLOAD_BYTES / 1024 / 1024}MB). Trim the clip or upload it from the web app instead.`,
+			413,
+		);
+	}
+
+	let bytes: Uint8Array;
+	try {
+		bytes = base64ToBytes(input.base64Data);
+	} catch {
+		throw new BackendError("Could not decode the attached file - it was not valid base64.", 400);
+	}
+
+	const form = new FormData();
+	form.append("user_id", env.BACKEND_USER_ID);
+	form.append("file", new Blob([bytes], { type: "video/mp4" }), input.filename);
+
+	const res = await fetch(`${env.BACKEND_API_URL}/api/upload`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${env.BACKEND_API_KEY}` },
+		body: form,
+	});
+
+	const text = await res.text();
+	let json: any = null;
+	try {
+		json = text ? JSON.parse(text) : null;
+	} catch {
+		// non-JSON body, handled below via res.ok
+	}
+
+	if (!res.ok) {
+		const message = json?.error || `Upload failed (${res.status})`;
+		throw new BackendError(message, res.status);
+	}
+	return json;
+}
+
 export interface LinkedInIdentity {
 	connected: boolean;
 	email: string | null;

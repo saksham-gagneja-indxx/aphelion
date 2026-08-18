@@ -18,6 +18,7 @@ import {
 	publishNow,
 	resolveUserId,
 	schedulePost,
+	uploadReel,
 	type BackendEnv,
 	type LinkedInIdentity,
 } from "./backend-client";
@@ -66,13 +67,6 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 
 	async init() {
-		console.log('🚀 MCP initializing...')
-		console.log('Environment:', {
-			BACKEND_URL: this.env.BACKEND_URL,
-			ALLOWED_GITHUB_USERNAMES: this.env.ALLOWED_GITHUB_USERNAMES,
-			props: this.props
-		})
-
 		const rawEnv: BackendEnv = normalizeBackendEnv(this.env);
 		const allowed = allowedUsers(this.env);
 		const login = this.props!.login;
@@ -154,12 +148,13 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					`${identityLine}\n\n` +
 					`🎯 **Welcome to Reel Management!**\n\n` +
 					`Here's what you can do right now:\n\n` +
+					`📤 **upload_reel** - Attach a video right here in chat to upload it\n` +
 					`📽️ **list_reels** - See all your uploaded reels\n` +
 					`💬 **draft_post** - Plan and prepare a post\n` +
 					`🚀 **publish_reel** - Post to LinkedIn NOW (irreversible)\n` +
 					`⏰ **schedule_reel** - Schedule a post for later\n\n` +
 					`**Quick Workflow:**\n` +
-					`1️⃣ list_reels → See what you have\n` +
+					`1️⃣ upload_reel (if it's not already in your library) or list_reels → See what you have\n` +
 					`2️⃣ draft_post → Prepare your post\n` +
 					`3️⃣ publish_reel or schedule_reel → Make it live\n\n` +
 					`👉 **Try this now:** Pick a reel and prepare it for posting. What would you like to do?\n`
@@ -176,15 +171,39 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				return textResult(
 					`${identityLine}\n\n` +
 					`**📋 All Available Commands:\n\n` +
-					`1. **list_reels**\n   See all your uploaded reels ready to post\n\n` +
-					`2. **draft_post**\n   Plan and prepare a post (pick reel, write caption, set time)\n\n` +
-					`3. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
-					`4. **schedule_reel**\n   Schedule a reel to post later\n\n` +
+					`1. **upload_reel**\n   Attach a video directly in this chat to add it to your reel library (short clips only, roughly under 20MB)\n\n` +
+					`2. **list_reels**\n   See all your uploaded reels ready to post\n\n` +
+					`3. **draft_post**\n   Plan and prepare a post (pick reel, write caption, set time)\n\n` +
+					`4. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
+					`5. **schedule_reel**\n   Schedule a reel to post later\n\n` +
 					`**⚡ Pro Tips:**\n` +
 					`• Start with "getting_started" for a quick guide\n` +
 					`• Use "draft_post" to prepare before publishing\n` +
 					`• Always check the 'Publishing as' line before publishing\n`
 				);
+			},
+		);
+
+		this.server.tool(
+			"upload_reel",
+			"📤 Upload a new reel by attaching a video file directly in this chat. Ask the person to attach/drag their video into the conversation, then pass its raw bytes here as base64 along with the original filename. Keep clips short - roughly under 20MB decoded (~27MB of base64 text); for anything bigger, they should use the web app's upload page instead. Once uploaded, it shows up in list_reels immediately.",
+			{
+				filename: z.string().describe("The original filename, e.g. 'my_reel.mp4'."),
+				base64Data: z
+					.string()
+					.describe("The attached video file's raw bytes, base64-encoded."),
+			},
+			async ({ filename, base64Data }) => {
+				try {
+					const result = await uploadReel(backendEnv, { filename, base64Data });
+					const r = result.reel;
+					return textResult(
+						`${identityLine}\n\nUploaded: ${r.filename}` +
+							(r.duration_seconds ? ` (${r.duration_seconds.toFixed(1)}s)` : ""),
+					);
+				} catch (e) {
+					return errorResult(e);
+				}
 			},
 		);
 
