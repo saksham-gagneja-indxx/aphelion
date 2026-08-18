@@ -15,7 +15,7 @@ from backend.core.agent import get_agent
 import logging
 
 logger = get_logger("captions")
-caption_bp = Blueprint("captions", __name__, url_prefix="/api/captions")
+caption_bp = Blueprint("caption_generation", __name__, url_prefix="/api/captions")
 settings = get_settings()
 
 
