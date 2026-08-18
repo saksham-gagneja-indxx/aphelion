@@ -15,33 +15,26 @@ services:
 
     envVars:
       - key: SECRET_KEY
-        sync: false  # Set manually in Render dashboard
+        sync: false
       - key: API_ACCESS_KEY
         sync: false
       - key: DATABASE_URL
-        sync: false  # From Supabase
-      - key: REDIS_URL
-        sync: false  # From Upstash
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
       - key: CLERK_SECRET_KEY
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
-      - key: LINKEDIN_CLIENT_ID
+      - key: LINKEDIN_API_KEY
         sync: false
-      - key: LINKEDIN_CLIENT_SECRET
-        sync: false
-      - key: NVIDIA_API_KEY
+      - key: LINKEDIN_ACCESS_TOKEN
         sync: false
       - key: CORS_ORIGINS
         value: https://postpilot.vercel.app
 
     healthCheckPath: /health
     healthCheckInterval: 30
-    maxInstanceCount: 1
     plan: free
-
-databases:
-  - name: postpilot-db
-    databaseName: postpilot
-    user: postgres
-    plan: free  # Note: Use Supabase instead for free PostgreSQL
