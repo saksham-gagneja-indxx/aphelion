@@ -3,6 +3,7 @@ User model for Social Media Automation Agent
 Stores Instagram and LinkedIn account information
 """
 
+import re
 from typing import Optional
 
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON
@@ -254,6 +255,19 @@ class User(Base):
             return True
         return self.linkedin_token_expires_at > utcnow()
 
+    def linkedin_scope_list(self) -> list:
+        """Parsed granted scopes.
+
+        LinkedIn's token response has been observed to delimit scopes with
+        commas rather than the space the OAuth spec calls for, so split on
+        either - a plain .split() left every scope trapped in one comma-joined
+        string, which made can_publish_to_linkedin() report False even when
+        w_member_social was genuinely granted.
+        """
+        if not self.linkedin_scope:
+            return []
+        return [s for s in re.split(r"[,\s]+", self.linkedin_scope) if s]
+
     def can_publish_to_linkedin(self) -> bool:
         """True when the grant actually carries publishing rights.
 
@@ -264,9 +278,10 @@ class User(Base):
         """
         if not self.linkedin_token_valid():
             return False
-        if not self.linkedin_scope:
+        scopes = self.linkedin_scope_list()
+        if not scopes:
             return True
-        return "w_member_social" in self.linkedin_scope.split()
+        return "w_member_social" in scopes
 
     def update_last_login(self):
         """Update last login timestamp"""

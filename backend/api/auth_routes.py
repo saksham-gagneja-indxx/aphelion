@@ -596,7 +596,7 @@ def _status_payload(user: User) -> dict:
         # post fails. Reported so setup can say so instead of the user finding
         # out when a scheduled post fires.
         "can_publish": user.can_publish_to_linkedin(),
-        "granted_scopes": (user.linkedin_scope or "").split() or None,
+        "granted_scopes": user.linkedin_scope_list() or None,
         "token_expires_at": expires_at.isoformat() if expires_at else None,
         # A lapsed token is a different state from never having connected and
         # needs a different message in the UI.

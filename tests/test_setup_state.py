@@ -123,6 +123,18 @@ def test_a_full_grant_completes_setup(app):
     assert body["complete"] is True
 
 
+def test_a_comma_delimited_grant_from_linkedin_completes_setup(app):
+    """LinkedIn's real token response has been observed to delimit scopes
+    with commas rather than the OAuth-spec space - a single-element list
+    like ["openid,profile,w_member_social"] must still be recognized as
+    granting w_member_social, not silently fail the membership check."""
+    user = _make_user(**_connected(linkedin_scope="openid,profile,w_member_social"))
+    steps, body = _state(app, user)
+
+    assert all(s["done"] for s in steps.values())
+    assert body["complete"] is True
+
+
 def test_an_expired_token_is_not_treated_as_able_to_publish(app):
     user = _make_user(
         linkedin_access_token="token",
