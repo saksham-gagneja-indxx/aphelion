@@ -207,6 +207,7 @@ def create_app():
     from backend.api.media_routes import media_bp
     from backend.api.caption_generation_routes import caption_bp
     from backend.api.post_routes import post_bp
+    from backend.api.scheduler_routes import scheduler_bp
     from backend.api.admin_routes import admin_bp
     from backend.api.publish_routes import publish_bp
     from backend.api.caption_routes import caption_bp as caption_bp_legacy
@@ -221,6 +222,7 @@ def create_app():
     app.register_blueprint(media_bp)  # Media upload & management
     app.register_blueprint(caption_bp)  # Caption generation
     app.register_blueprint(post_bp)  # Post creation & publishing
+    app.register_blueprint(scheduler_bp)  # Scheduling & optimal timing
     app.register_blueprint(admin_bp)
     app.register_blueprint(publish_bp)
     app.register_blueprint(caption_bp_legacy)  # Legacy captions
