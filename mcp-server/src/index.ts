@@ -18,7 +18,6 @@ import {
 	publishNow,
 	resolveUserId,
 	schedulePost,
-	suggestCaptions,
 	type BackendEnv,
 	type LinkedInIdentity,
 } from "./backend-client";
@@ -139,23 +138,22 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// Getting started guide - Claude will show this first
 		this.server.tool(
 			"getting_started",
-			"🎬 Get started with LinkedIn reel automation! Shows available commands and quick workflow.",
+			"🎬 Get started with reel management! Shows available commands and quick workflow.",
 			{},
 			async () => {
 				return textResult(
 					`${identityLine}\n\n` +
-					`🎯 **Welcome to Reel Automation!**\n\n` +
+					`🎯 **Welcome to Reel Management!**\n\n` +
 					`Here's what you can do right now:\n\n` +
 					`📽️ **list_reels** - See all your uploaded reels\n` +
-					`✍️ **suggest_captions** - Get AI-written LinkedIn captions\n` +
-					`💬 **draft_post** - Plan a post with AI assistance\n` +
+					`💬 **draft_post** - Plan and prepare a post\n` +
 					`🚀 **publish_reel** - Post to LinkedIn NOW (irreversible)\n` +
 					`⏰ **schedule_reel** - Schedule a post for later\n\n` +
 					`**Quick Workflow:**\n` +
 					`1️⃣ list_reels → See what you have\n` +
-					`2️⃣ draft_post → Plan your next post\n` +
+					`2️⃣ draft_post → Prepare your post\n` +
 					`3️⃣ publish_reel or schedule_reel → Make it live\n\n` +
-					`👉 **Try this now:** I can help you pick a reel, write a caption, and post it. What would you like to do?\n`
+					`👉 **Try this now:** Pick a reel and prepare it for posting. What would you like to do?\n`
 				);
 			},
 		);
@@ -170,13 +168,12 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					`${identityLine}\n\n` +
 					`**📋 All Available Commands:\n\n` +
 					`1. **list_reels**\n   See all your uploaded reels ready to post\n\n` +
-					`2. **suggest_captions**\n   Get 3 AI-drafted LinkedIn captions for a reel\n\n` +
-					`3. **draft_post**\n   Chat with AI to plan a post (pick reel, write caption, set time)\n\n` +
-					`4. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
-					`5. **schedule_reel**\n   Schedule a reel to post later\n\n` +
+					`2. **draft_post**\n   Plan and prepare a post (pick reel, write caption, set time)\n\n` +
+					`3. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
+					`4. **schedule_reel**\n   Schedule a reel to post later\n\n` +
 					`**⚡ Pro Tips:**\n` +
 					`• Start with "getting_started" for a quick guide\n` +
-					`• Use "draft_post" to plan before publishing\n` +
+					`• Use "draft_post" to prepare before publishing\n` +
 					`• Always check the 'Publishing as' line before publishing\n`
 				);
 			},
@@ -203,33 +200,6 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		this.server.tool(
-			"suggest_captions",
-			"✍️ Generate 3 AI-drafted LinkedIn captions for a reel. Give a one-sentence brief about what the reel shows (AI won't watch it, so be specific). Get 3 different angles instantly.",
-			{
-				brief: z.string().describe("What the reel is about, in a sentence."),
-				reelFilename: z
-					.string()
-					.optional()
-					.describe("Exact filename from list_reels, used for thumbnail context only."),
-				durationSeconds: z.number().optional(),
-			},
-			async ({ brief, reelFilename, durationSeconds }) => {
-				try {
-					const { captions } = await suggestCaptions(backendEnv, {
-						brief,
-						reelFilename,
-						durationSeconds,
-					});
-					const text = captions
-						.map((c, i) => `${i + 1}. [${c.angle}]\n${c.text}`)
-						.join("\n\n");
-					return textResult(text);
-				} catch (e) {
-					return errorResult(e);
-				}
-			},
-		);
 
 		this.server.tool(
 			"draft_post",
