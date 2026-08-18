@@ -284,6 +284,26 @@ def cmd_purge_guests(args) -> int:
         db.close()
 
 
+def cmd_set_github(args) -> int:
+    """Map a GitHub login to a backend user ID for MCP authentication"""
+    db = get_session()
+    try:
+        user = _find(db, args.user_id)
+        if user is None:
+            print(f"No account matching {args.user_id!r}.", file=sys.stderr)
+            return 1
+
+        user.github_username = args.github_login
+        db.commit()
+        print(f"✅ Mapped GitHub:{args.github_login} → User ID:{user.id}")
+        return 0
+    except Exception as e:
+        print(f"❌ Error setting GitHub username: {str(e)}", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m backend.admin_cli",
@@ -316,6 +336,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("purge-guests", help="delete all guest accounts")
     p.add_argument("--yes", action="store_true", help="confirm")
     p.set_defaults(func=cmd_purge_guests)
+
+    p = sub.add_parser("set-github", help="map GitHub login to user ID for MCP")
+    p.add_argument("user_id", help="user id or email")
+    p.add_argument("github_login", help="GitHub username")
+    p.set_defaults(func=cmd_set_github)
 
     args = parser.parse_args(argv)
     return args.func(args)

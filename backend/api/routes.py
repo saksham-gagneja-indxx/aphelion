@@ -131,6 +131,42 @@ def get_user(user_id):
         return jsonify({"error": str(e)}), 500
 
 
+@api_bp.route("/users/by-github/<github_username>", methods=["GET"])
+def get_user_by_github(github_username):
+    """Lookup user by GitHub username (MCP server use only)
+
+    Returns 404 for unmapped or inactive accounts alike - deliberately
+    not distinguished to avoid leaking that an account existed.
+    """
+    denied = require_user_access(None)  # Machine/admin only
+    if denied:
+        return denied
+
+    try:
+        db = get_session()
+        user = db.query(User).filter(
+            User.github_username == github_username,
+            User.is_active == True
+        ).first()
+
+        if not user:
+            db.close()
+            return jsonify({"error": "No active account found"}), 404
+
+        response = {
+            "id": user.id,
+            "name": user.full_name,
+            "role": user.role,
+            "github_username": user.github_username
+        }
+        db.close()
+        return jsonify(response), 200
+
+    except Exception as e:
+        logger.error(f"Error looking up GitHub user: {str(e)}")
+        return jsonify({"error": "Lookup failed"}), 500
+
+
 @api_bp.route("/users/<int:user_id>/authenticate", methods=["POST"])
 def authenticate_user(user_id):
     """Authenticate user with Instagram"""

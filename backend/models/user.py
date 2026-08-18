@@ -33,6 +33,12 @@ class User(Base):
     # sign-in, LinkedIn purely for publish rights) without collision.
     clerk_id = Column(String(255), unique=True, index=True, nullable=True)
 
+    # GitHub username for MCP authentication. Maps GitHub login → backend user ID.
+    # Used by the MCP Cloudflare Worker to resolve which account a GitHub OAuth
+    # login should act as. Multiple GitHub users can share one deployment if their
+    # usernames are registered to different backend user IDs.
+    github_username = Column(String(255), unique=True, index=True, nullable=True)
+
     full_name = Column(String(255), nullable=True)
     email = Column(String(255), nullable=True, index=True)
     avatar_url = Column(String(1000), nullable=True)
