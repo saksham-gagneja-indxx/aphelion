@@ -1,13 +1,50 @@
-# Post Pilot MCP server
+# Post Pilot MCP Server
 
-A remote [Model Context Protocol](https://modelcontextprotocol.io/introduction) server
-that lets Claude (Cowork, claude.ai, Claude Desktop) drive the Post Pilot app —
-list reels, get caption suggestions, run the posting assistant, and schedule or
-publish a post — without opening the web app.
+**Let Claude manage your social media.** 📱
 
-Built on Cloudflare Workers using [`workers-oauth-provider`](https://github.com/cloudflare/workers-oauth-provider),
-following [Cloudflare's remote MCP + OAuth pattern](https://developers.cloudflare.com/agents/model-context-protocol/guides/remote-mcp-server/).
-Free tier: no idle-sleep, unlike Render's free web services.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that connects Claude to Post Pilot, giving Claude the power to:
+
+- 📋 **List your reels** — see what's available to post
+- ✍️ **Generate captions** — AI-powered caption suggestions from a brief
+- 📝 **Draft posts** — multi-turn conversations with Claude for full post composition
+- 📅 **Schedule reels** — set up posts for future times
+- 🚀 **Publish immediately** — push reels live to LinkedIn (with confirmation)
+
+Use it in **Claude Desktop**, **claude.ai**, or **Claude Code** to control Post Pilot entirely through conversation.
+
+---
+
+## Why This Matters
+
+**No UI context switching.** Stay in Claude and say:
+```
+Schedule my latest reel for tomorrow at 9am with a caption about our new feature launch
+```
+
+Claude will:
+1. List your reels
+2. Draft a caption  
+3. Schedule it
+4. Confirm completion
+
+All without leaving the chat.
+
+---
+
+## Quick Start
+
+**Install in 5 minutes:** [👉 INSTALLATION.md](INSTALLATION.md)
+
+**Technical details:** [👉 SETUP.md](SETUP.md)
+
+---
+
+## Built On
+
+- [Cloudflare Workers](https://workers.cloudflare.com) — free, always-on (no idle sleep)
+- [Model Context Protocol](https://modelcontextprotocol.io/) — Anthropic's open standard for tool integration
+- [GitHub OAuth](https://docs.github.com/en/developers/apps/building-oauth-apps) — secure authentication
+- [Post Pilot Backend API](https://github.com/saksham-gagneja-indxx/Social-Media-Manager)
 
 ## What it is not
 
