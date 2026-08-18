@@ -213,25 +213,3 @@ Then reference in workflows as `${{ secrets.GITHUB_CLIENT_ID }}`, etc.
 | `CLERK_SECRET_KEY` | Clerk authentication secret | Clerk Dashboard → API Keys |
 
 ---
-
-## Important Notes
-
-⚠️ **NEVER** commit `.env` or `.dev.vars` files to git (add to `.gitignore`)
-
-✅ DO use Cloudflare Secrets or GitHub Secrets for production
-
-✅ DO use `.dev.vars` for local development only
-
-✅ DO rotate secrets periodically
-
-✅ DO keep these private (never share):
-  - `GITHUB_CLIENT_SECRET`
-  - `GITHUB_CLIENT_ID` (if app is not public)
-  - `COOKIE_ENCRYPTION_KEY`
-  - `SECRET_KEY`
-  - `API_ACCESS_KEY`
-  - `ENCRYPTION_KEY`
-  - `LINKEDIN_CLIENT_SECRET`
-  - `DATABASE_URL` (contains credentials)
-  - `UPSTASH_REDIS_REST_TOKEN`
-  - `CLERK_SECRET_KEY`
