@@ -13,7 +13,7 @@ import pytz
 from backend.utils.logger import get_logger
 from backend.utils.database import get_session
 from backend.utils.config import get_settings
-from backend.utils.security import current_user, require_user_access
+from backend.utils.security import current_user, require_admin, require_user_access
 from backend.core.agent import get_agent, clear_agent
 from backend.core.reel_manager import get_reel_manager
 from backend.core.storage import get_media_store
@@ -62,6 +62,33 @@ def _scope_to_caller(user_id):
 
 
 # ============ USER ENDPOINTS ============
+
+@api_bp.route("/users/by-github/<username>", methods=["GET"])
+def user_by_github(username):
+    """Resolve a GitHub login to the backend account it acts as.
+
+    Built for the MCP connector: it authenticates a caller via GitHub OAuth
+    and needs to know which backend user that GitHub identity should act as,
+    rather than every connector install being hardcoded to one account.
+
+    Guarded the same way admin endpoints are - machine callers (the API key)
+    are already full-privilege, and a stray human session token has no
+    reason to be resolving *other* GitHub logins to user ids, so this is
+    admin-or-machine only rather than open to any signed-in user.
+    """
+    denied = require_admin()
+    if denied:
+        return denied
+
+    db = get_session()
+    try:
+        user = db.query(User).filter(User.github_username == username).first()
+        if user is None or not user.is_active:
+            return jsonify({"error": "No active account for that GitHub login."}), 404
+        return jsonify({"id": user.id, "name": user.full_name, "role": user.role}), 200
+    finally:
+        db.close()
+
 
 @api_bp.route("/users", methods=["POST"])
 def create_user():

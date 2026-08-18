@@ -745,10 +745,14 @@ class NvidiaNimProvider(LLMProvider):
         CAPTION_MAX_TOKENS = 4096
 
         try:
-            # Build model name with nvidia/ prefix if not already present
+            # NVIDIA NIM's catalog model ids are already fully namespaced
+            # (e.g. "meta/muse-glimmer-30b") - prepending "nvidia/" here used
+            # to turn that into "nvidia/meta/muse-glimmer-30b", which matches
+            # no real model and 404s from NVIDIA's API on every call. Found
+            # live: this broke every suggest_captions request in production,
+            # while run_composer_turn (which never added this prefix) kept
+            # working, which is what made the two tools look inconsistent.
             model = self.settings.nvidia_model
-            if not model.startswith("nvidia/"):
-                model = f"nvidia/{model}"
 
             # No reasoning for instant caption generation
             extra_body = {}

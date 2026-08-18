@@ -167,6 +167,50 @@ def test_demote_refuses_to_remove_the_last_admin(db, capsys):
         session.close()
 
 
+def test_set_github_maps_a_login_to_an_account(db, capsys):
+    from backend.models.user import User
+
+    user = _make_user(
+        db, linkedin_sub="sub-y", full_name="Dev", email="dev@test", role="operator",
+        is_active=True,
+    )
+
+    assert main(["set-github", str(user.id), "octocat"]) == 0
+    assert "octocat" in capsys.readouterr().out
+
+    session = db.get_session()
+    try:
+        assert session.query(User).filter(User.id == user.id).first().github_username == "octocat"
+    finally:
+        session.close()
+
+
+def test_set_github_refuses_a_login_already_claimed(db, capsys):
+    """Otherwise two accounts could both claim the same GitHub identity, and
+    the MCP lookup (which matches by github_username) would be ambiguous
+    about which one it means."""
+    from backend.models.user import User
+
+    first = _make_user(
+        db, linkedin_sub="sub-1", full_name="First", email="first@test",
+        role="operator", is_active=True, github_username="octocat",
+    )
+    second = _make_user(
+        db, linkedin_sub="sub-2", full_name="Second", email="second@test",
+        role="operator", is_active=True,
+    )
+
+    assert main(["set-github", str(second.id), "octocat"]) == 1
+    assert "already mapped" in capsys.readouterr().err
+
+    session = db.get_session()
+    try:
+        assert session.query(User).filter(User.id == second.id).first().github_username is None
+        assert session.query(User).filter(User.id == first.id).first().github_username == "octocat"
+    finally:
+        session.close()
+
+
 def test_pin_writes_admin_subs_to_the_env_file(db, env_file, monkeypatch, capsys):
     import backend.admin_cli as cli
 

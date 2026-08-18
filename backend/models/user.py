@@ -33,6 +33,16 @@ class User(Base):
     # sign-in, LinkedIn purely for publish rights) without collision.
     clerk_id = Column(String(255), unique=True, index=True, nullable=True)
 
+    # GitHub login, used by the MCP connector to map "who authenticated via
+    # GitHub OAuth" to "which backend account they act as". Independent of
+    # Clerk/LinkedIn sign-in - a person can use the web app via one identity
+    # provider and the MCP connector via GitHub without those being linked.
+    # Set via `python -m backend.admin_cli set-github <user> <login>`; there
+    # is deliberately no self-service way to set this yet; an admin has to
+    # vouch for the mapping since it decides which account a GitHub identity
+    # can act as through the MCP server.
+    github_username = Column(String(255), unique=True, index=True, nullable=True)
+
     full_name = Column(String(255), nullable=True)
     email = Column(String(255), nullable=True, index=True)
     avatar_url = Column(String(1000), nullable=True)
