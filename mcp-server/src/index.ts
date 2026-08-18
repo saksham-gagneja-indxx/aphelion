@@ -58,12 +58,21 @@ function errorResult(e: unknown) {
 }
 
 export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
+	
 	server = new McpServer({
 		name: "Reel Automation",
 		version: "1.0.0",
 	});
 
+
 	async init() {
+		console.log('🚀 MCP initializing...')
+		console.log('Environment:', {
+			BACKEND_URL: this.env.BACKEND_URL,
+			ALLOWED_GITHUB_USERNAMES: this.env.ALLOWED_GITHUB_USERNAMES,
+			props: this.props
+		})
+
 		const rawEnv: BackendEnv = normalizeBackendEnv(this.env);
 		const allowed = allowedUsers(this.env);
 		const login = this.props!.login;
