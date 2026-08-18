@@ -92,7 +92,7 @@ jobs:
 
       - name: Run backend integration tests
         run: |
-          pytest backend/tests/integration -v --cov=backend --cov-report=xml
+          pytest tests -v --cov=backend --cov-report=xml
         env:
           DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
