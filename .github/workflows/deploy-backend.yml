@@ -37,17 +37,19 @@ jobs:
         run: |
           pip install flake8
           flake8 backend --count --select=E9,F63,F7,F82 --show-source --statistics
-        continue-on-error: true
 
+      # Not gated: 171 pre-existing errors across the codebase as of 2026-08-19,
+      # mostly SQLAlchemy Column[T] vs T false positives. Fixing those is a
+      # separate cleanup effort; left informational until that happens so it
+      # doesn't block every unrelated deploy today.
       - name: Type check
         run: |
           pip install mypy
           mypy backend --ignore-missing-imports
         continue-on-error: true
 
-      - name: Run tests (if applicable)
+      - name: Run tests
         run: pytest tests/ --tb=short
-        continue-on-error: true
 
   deploy:
     name: Deploy to Render
