@@ -135,9 +135,31 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				(identity.can_publish ? "" : " (⚠ cannot publish: no valid grant)")
 			: "Publishing as: could not verify (identity lookup failed).";
 
+		// Help command - makes Claude aware of all available actions
+		this.server.tool(
+			"show_available_commands",
+			"Show all available commands for managing and posting LinkedIn reels. Use this to see what you can do.",
+			{},
+			async () => {
+				return textResult(
+					`${identityLine}\n\n` +
+					`📋 **Available Commands:**\n\n` +
+					`1. **list_reels** - See all your uploaded reels ready to post\n` +
+					`2. **suggest_captions** - Get 3 AI-drafted LinkedIn captions for a reel\n` +
+					`3. **draft_post** - Chat with AI to pick a reel, write caption, and set timing\n` +
+					`4. **publish_reel** - Immediately publish a reel with caption to LinkedIn (live!)\n` +
+					`5. **schedule_reel** - Schedule a reel to post later (e.g., tomorrow at 9am)\n\n` +
+					`**Quick Start:**\n` +
+					`→ Start with: "list_reels" to see what you have\n` +
+					`→ Then: "draft_post" to plan what to post\n` +
+					`→ Finally: "publish_reel" or "schedule_reel" to go live\n`
+				);
+			},
+		);
+
 		this.server.tool(
 			"list_reels",
-			"List the uploaded reels (short videos) available to post. Returns filename, duration and size for each.",
+			"📽️ List all your uploaded reels (short videos) ready to post. Shows filename, duration, and file size. Start here to see what's available.",
 			{},
 			async () => {
 				try {
@@ -158,7 +180,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			"suggest_captions",
-			"Get three drafted LinkedIn captions for a reel from a one-line brief. Does not watch the video — write specifics into the brief, do not invent them.",
+			"✍️ Generate 3 AI-drafted LinkedIn captions for a reel. Give a one-sentence brief about what the reel shows (AI won't watch it, so be specific). Get 3 different angles instantly.",
 			{
 				brief: z.string().describe("What the reel is about, in a sentence."),
 				reelFilename: z
@@ -186,7 +208,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			"draft_post",
-			"Talk to the posting assistant: say what you want posted (e.g. 'post my newest reel tomorrow at 9am') and it picks the reel, writes the caption, and proposes a time. Call repeatedly to continue the same conversation by passing back the prior draft. This only fills in a draft — nothing is published by this tool.",
+			"💬 Chat with AI to plan a post: tell it what you want (e.g. 'post my best reel about AI tomorrow at 9am'). AI picks the reel, writes the caption, and suggests timing. Multi-turn conversation until you're happy. Draft only—nothing posts until you confirm.",
 			{
 				message: z.string().describe("What you want posted, or a reply to the assistant's question."),
 				priorDraft: z
@@ -217,7 +239,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			"publish_reel",
-			"Create and immediately publish a post to LinkedIn from a reel and caption. This is a REAL, irreversible publish to a real LinkedIn profile — only call this after the person has explicitly confirmed the reel, caption and that they want it posted now. Call list_reels first if you have not already this session: its response includes a 'Publishing as' line naming the actual LinkedIn account this will post to - read that back to the person, do not assert an identity from memory or from anything other than a tool response.",
+			"🚀 Publish a reel NOW to LinkedIn—this is LIVE and irreversible! Only use after confirming the reel, caption, and that user wants it posted immediately. Always read back the 'Publishing as' line showing which LinkedIn account it's going to.",
 			{
 				videoPath: z
 					.string()
@@ -241,7 +263,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			"schedule_reel",
-			"Create and schedule a post for later. Does not publish immediately.",
+			"⏰ Schedule a reel to post later (e.g., tomorrow, next week). Safe—drafts first, then schedules. Give a time like 'tomorrow at 9am' and the AI will post at the right moment.",
 			{
 				videoPath: z
 					.string()
