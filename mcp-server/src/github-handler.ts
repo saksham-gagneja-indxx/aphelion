@@ -3,6 +3,11 @@ import type { AuthRequest, OAuthHelpers } from "@cloudflare/workers-oauth-provid
 import { Hono } from "hono";
 import { Octokit } from "octokit";
 import { fetchUpstreamAuthToken, getUpstreamAuthorizeUrl, type Props } from "./utils";
+
+// Strip UTF-8 BOM from environment variables
+function stripBOM(str: string): string {
+	return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+}
 import {
 	addApprovedClient,
 	bindStateToSession,
@@ -110,7 +115,7 @@ async function redirectToGithub(
 		headers: {
 			...headers,
 			location: getUpstreamAuthorizeUrl({
-				client_id: env.GITHUB_CLIENT_ID,
+				client_id: stripBOM(env.GITHUB_CLIENT_ID),
 				redirect_uri: new URL("/callback", request.url).href,
 				scope: "read:user",
 				state: stateToken,
@@ -161,8 +166,8 @@ app.get("/callback", async (c) => {
 
 	// Exchange the code for an access token
 	const [accessToken, errResponse] = await fetchUpstreamAuthToken({
-		client_id: c.env.GITHUB_CLIENT_ID,
-		client_secret: c.env.GITHUB_CLIENT_SECRET,
+		client_id: stripBOM(c.env.GITHUB_CLIENT_ID),
+		client_secret: stripBOM(c.env.GITHUB_CLIENT_SECRET),
 		code: c.req.query("code"),
 		redirect_uri: new URL("/callback", c.req.url).href,
 		upstream_url: "https://github.com/login/oauth/access_token",

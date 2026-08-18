@@ -3,6 +3,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
 import { z } from "zod";
 import { GitHubHandler } from "./github-handler";
+
+// Strip UTF-8 BOM from environment variables
+function stripBOM(str: string): string {
+	return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+}
 import {
 	BackendError,
 	composerTurn,
