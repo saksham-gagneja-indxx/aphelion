@@ -123,6 +123,7 @@ class User(Base):
     # Relationships
     posts = relationship("Post", back_populates="user", cascade="all, delete-orphan")
     analytics = relationship("Analytics", back_populates="user", cascade="all, delete-orphan")
+    linkedin_credential = relationship("LinkedInCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, instagram={self.instagram_username})>"

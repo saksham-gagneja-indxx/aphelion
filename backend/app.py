@@ -202,6 +202,7 @@ def create_app():
     # Register blueprints
     from backend.api.routes import api_bp
     from backend.api.auth_routes import auth_bp
+    from backend.api.clerk_auth_routes import clerk_auth_bp
     from backend.api.admin_routes import admin_bp
     from backend.api.publish_routes import publish_bp
     from backend.api.caption_routes import caption_bp
@@ -211,6 +212,7 @@ def create_app():
     from backend.api.integrations_routes import integrations_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(clerk_auth_bp)  # New Clerk-based auth
     app.register_blueprint(admin_bp)
     app.register_blueprint(publish_bp)
     app.register_blueprint(caption_bp)
