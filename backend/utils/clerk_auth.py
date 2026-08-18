@@ -197,3 +197,37 @@ def verify_session_token(token: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Session token verification failed: {e}")
         return None
+
+
+class ClerkVerificationError(Exception):
+    """Raised when Clerk token verification fails."""
+    pass
+
+
+def verify_and_fetch(token: str) -> tuple[str, Dict[str, Any]]:
+    """
+    Verify Clerk JWT token and fetch user profile from Clerk API.
+
+    Args:
+        token: Clerk JWT token
+
+    Returns:
+        Tuple of (clerk_id, profile_dict)
+
+    Raises:
+        ClerkVerificationError: If token is invalid or fetch fails
+    """
+    decoded = verify_clerk_token(token)
+    if not decoded:
+        raise ClerkVerificationError("Token verification failed")
+
+    clerk_id = decoded.get("sub")
+    if not clerk_id:
+        raise ClerkVerificationError("No clerk ID in token")
+
+    clerk_user = get_clerk_user(clerk_id)
+    if not clerk_user:
+        raise ClerkVerificationError("Could not fetch user profile from Clerk")
+
+    profile = extract_user_info(clerk_user)
+    return clerk_id, profile
