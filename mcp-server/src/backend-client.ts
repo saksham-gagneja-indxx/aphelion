@@ -130,6 +130,32 @@ export const listReels = (env: BackendEnv) =>
 		`/api/users/${env.BACKEND_USER_ID}/reels`,
 	);
 
+export interface LinkedInIdentity {
+	connected: boolean;
+	email: string | null;
+	person_urn: string | null;
+	can_publish: boolean;
+}
+
+/**
+ * Which LinkedIn account this session's tool calls would actually publish
+ * to, if anything got called.
+ *
+ * Added specifically because a caller with no other way to verify identity
+ * (an MCP client only ever sees this backend through this API, never a
+ * dashboard) has no path to trust "this session acts as account N" without
+ * it - "trust me" from an assistant relaying an unverifiable claim is
+ * exactly the failure mode that should be refused, not talked past. Real
+ * identity data has to come from a tool response, not a conversational
+ * assertion.
+ */
+export const getLinkedInIdentity = (env: BackendEnv) =>
+	call<LinkedInIdentity>(
+		env,
+		"GET",
+		`/api/auth/linkedin/status?user_id=${env.BACKEND_USER_ID}`,
+	);
+
 export const suggestCaptions = (
 	env: BackendEnv,
 	input: { brief: string; reelFilename?: string; durationSeconds?: number },

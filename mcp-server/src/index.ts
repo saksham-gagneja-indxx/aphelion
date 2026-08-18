@@ -7,6 +7,7 @@ import {
 	BackendError,
 	composerTurn,
 	createPost,
+	getLinkedInIdentity,
 	listReels,
 	normalizeBackendEnv,
 	publishNow,
@@ -14,6 +15,7 @@ import {
 	schedulePost,
 	suggestCaptions,
 	type BackendEnv,
+	type LinkedInIdentity,
 } from "./backend-client";
 
 // Context from the GitHub OAuth handshake, encrypted & stored in the auth
@@ -110,6 +112,24 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		const backendEnv: BackendEnv = { ...rawEnv, BACKEND_USER_ID: String(resolved.id) };
 
+		// Fetched once per session, not per call: this is what lets a caller
+		// verify which real account tool calls act on WITHOUT asking anyone to
+		// take an assertion on faith - the identity comes from a tool
+		// response, not from conversational claims about what "the backend"
+		// or "another session" supposedly confirmed. Best-effort: a failure
+		// here degrades the identity line, not the tools themselves.
+		let identity: LinkedInIdentity | null = null;
+		try {
+			identity = await getLinkedInIdentity(backendEnv);
+		} catch {
+			identity = null;
+		}
+		const identityLine = identity
+			? `Publishing as: ${identity.email ?? "(no email on file)"}` +
+				(identity.person_urn ? ` — ${identity.person_urn}` : "") +
+				(identity.can_publish ? "" : " (⚠ cannot publish: no valid grant)")
+			: "Publishing as: could not verify (identity lookup failed).";
+
 		this.server.tool(
 			"list_reels",
 			"List the uploaded reels (short videos) available to post. Returns filename, duration and size for each.",
@@ -118,13 +138,13 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				try {
 					const { reels } = await listReels(backendEnv);
 					if (reels.length === 0) {
-						return textResult("No reels uploaded yet.");
+						return textResult(`${identityLine}\n\nNo reels uploaded yet.`);
 					}
 					const lines = reels.map(
 						(r) =>
 							`- ${r.filename}${r.duration_seconds ? ` (${r.duration_seconds.toFixed(1)}s)` : ""}`,
 					);
-					return textResult(lines.join("\n"));
+					return textResult(`${identityLine}\n\n${lines.join("\n")}`);
 				} catch (e) {
 					return errorResult(e);
 				}
@@ -192,7 +212,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 		this.server.tool(
 			"publish_reel",
-			"Create and immediately publish a post to LinkedIn from a reel and caption. This is a REAL, irreversible publish to a real LinkedIn profile — only call this after the person has explicitly confirmed the reel, caption and that they want it posted now.",
+			"Create and immediately publish a post to LinkedIn from a reel and caption. This is a REAL, irreversible publish to a real LinkedIn profile — only call this after the person has explicitly confirmed the reel, caption and that they want it posted now. Call list_reels first if you have not already this session: its response includes a 'Publishing as' line naming the actual LinkedIn account this will post to - read that back to the person, do not assert an identity from memory or from anything other than a tool response.",
 			{
 				videoPath: z
 					.string()
@@ -207,7 +227,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						aiGeneratedCaption: true,
 					});
 					const result = await publishNow(backendEnv, post.id);
-					return textResult(`Published: ${result.url}`);
+					return textResult(`${identityLine}\n\nPublished: ${result.url}`);
 				} catch (e) {
 					return errorResult(e);
 				}
