@@ -3,13 +3,14 @@ LinkedIn OAuth and credential management routes.
 
 Routes:
   POST /api/linkedin/connect        - Initiate LinkedIn OAuth flow
-  POST /api/linkedin/callback       - LinkedIn OAuth callback (handles auth code)
+  GET  /api/linkedin/callback       - LinkedIn OAuth redirect (from LinkedIn)
+  POST /api/linkedin/callback       - LinkedIn OAuth callback (handles auth code from frontend)
   GET  /api/linkedin/status         - Check LinkedIn connection status
   POST /api/linkedin/disconnect     - Revoke LinkedIn connection
   POST /api/linkedin/refresh-token  - Manually refresh LinkedIn token
 """
 
-from flask import Blueprint, request, jsonify, g, url_for
+from flask import Blueprint, request, jsonify, g, url_for, redirect
 from backend.utils.database import get_session
 from backend.models.user import User
 from backend.models.linkedin_credential import LinkedInCredential
@@ -188,6 +189,30 @@ def initiate_linkedin_connection():
         "oauth_url": oauth_url,
         "state": state,
     }), 200
+
+
+@linkedin_bp.route("/callback", methods=["GET"])
+def linkedin_oauth_callback_get():
+    """
+    Handle LinkedIn OAuth redirect (GET from LinkedIn).
+    LinkedIn redirects to this endpoint with code and state as query params.
+    """
+    code = request.args.get("code")
+    state = request.args.get("state")
+    error = request.args.get("error")
+
+    if error:
+        logger.warning(f"LinkedIn OAuth error: {error}")
+        return redirect(f"{get_settings().frontend_url}/?linkedin=denied")
+
+    if not code or not state:
+        logger.warning("Missing code or state in LinkedIn callback")
+        return redirect(f"{get_settings().frontend_url}/?linkedin=missing_code")
+
+    # Redirect to frontend with code and state so it can POST to /callback
+    return redirect(
+        f"{get_settings().frontend_url}/?linkedin=authorize&code={code}&state={state}"
+    )
 
 
 @linkedin_bp.route("/callback", methods=["POST"])
