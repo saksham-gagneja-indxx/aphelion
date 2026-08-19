@@ -53,6 +53,38 @@ export async function resolveUserId(
 	return (await res.json()) as ResolvedUser;
 }
 
+/**
+ * Begin self-serve onboarding for a GitHub login with no backend account
+ * mapped yet. The backend hands back a LinkedIn sign-in URL that will, on
+ * success, map this exact GitHub login to whichever account signs in -
+ * automatically, no admin_cli step. See backend/api/auth_routes.py's
+ * mcp_link_start.
+ */
+export async function linkGithubStart(
+	env: Pick<BackendEnv, "BACKEND_API_URL" | "BACKEND_API_KEY">,
+	githubUsername: string,
+): Promise<{ url: string }> {
+	const res = await fetch(`${env.BACKEND_API_URL}/api/mcp/link-start`, {
+		method: "POST",
+		headers: {
+			Authorization: `Bearer ${env.BACKEND_API_KEY}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ github_username: githubUsername }),
+	});
+	if (!res.ok) {
+		let message = `Could not start LinkedIn sign-in (${res.status}).`;
+		try {
+			const json = (await res.json()) as any;
+			if (json?.error) message = json.error;
+		} catch {
+			// non-JSON body, keep the generic message
+		}
+		throw new BackendError(message, res.status);
+	}
+	return (await res.json()) as { url: string };
+}
+
 export class BackendError extends Error {
 	status: number;
 	constructor(message: string, status: number) {

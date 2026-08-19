@@ -46,6 +46,11 @@ def db(app):
     session.close()
 
 
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
 def test_access_and_refresh_tokens_are_encrypted_at_rest(db):
     from backend.models.user import User
 
@@ -168,3 +173,43 @@ def argparse_namespace():
     import argparse
 
     return argparse.Namespace()
+
+
+def test_admin_route_requires_a_bearer_key(client, db):
+    from backend.models.user import User
+
+    user = User(linkedin_sub="sub-route-noauth", full_name="Route", is_active=True)
+    user._linkedin_access_token_legacy = "plaintext"
+    db.add(user)
+    db.commit()
+
+    res = client.post("/api/admin/encrypt-linkedin-tokens")
+    assert res.status_code == 401
+
+
+def test_admin_route_migrates_and_reports_a_count(client, db):
+    from backend.models.user import User
+
+    user = User(linkedin_sub="sub-route-1", full_name="Route 1", is_active=True)
+    user._linkedin_access_token_legacy = "route-plaintext"
+    db.add(user)
+    db.commit()
+
+    res = client.post(
+        "/api/admin/encrypt-linkedin-tokens",
+        headers={"Authorization": "Bearer token-encryption-test-key"},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["migrated"] == 1
+
+    db.expire_all()
+    reloaded = db.query(User).filter(User.linkedin_sub == "sub-route-1").first()
+    assert reloaded.linkedin_access_token == "route-plaintext"
+    assert reloaded._linkedin_access_token_legacy is None
+
+    # Idempotent - a second call finds nothing left to do.
+    res2 = client.post(
+        "/api/admin/encrypt-linkedin-tokens",
+        headers={"Authorization": "Bearer token-encryption-test-key"},
+    )
+    assert res2.get_json()["migrated"] == 0

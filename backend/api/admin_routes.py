@@ -156,6 +156,28 @@ def set_active(user_id: int):
         db.close()
 
 
+@admin_bp.route("/encrypt-linkedin-tokens", methods=["POST"])
+def encrypt_linkedin_tokens_route():
+    """One-off migration trigger: force any plaintext LinkedIn access/refresh
+    tokens onto encrypted storage immediately.
+
+    Equivalent to `python -m backend.admin_cli encrypt-linkedin-tokens`
+    (backend/admin_cli.py's encrypt_pending_linkedin_tokens does the actual
+    work, shared by both). Exists as an HTTP route because the production
+    database is not reachable directly from every environment that needs to
+    run this once after deploying the encryption fix, but the deployed API
+    always is. Idempotent - safe to call more than once.
+    """
+    from backend.admin_cli import encrypt_pending_linkedin_tokens
+
+    db = get_session()
+    try:
+        count = encrypt_pending_linkedin_tokens(db)
+        return jsonify({"migrated": count}), 200
+    finally:
+        db.close()
+
+
 @admin_bp.route("/audit", methods=["GET"])
 def audit_log():
     """Recent audit entries, newest first."""

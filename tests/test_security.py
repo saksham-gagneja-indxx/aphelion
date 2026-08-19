@@ -107,8 +107,8 @@ def test_placeholder_key_counts_as_unconfigured():
 def test_state_roundtrip(app):
     with app.app_context():
         state = make_oauth_state(42)
-        user_id, error = verify_oauth_state(state)
-    assert user_id == 42 and error == ""
+        user_id, error, link_github = verify_oauth_state(state)
+    assert user_id == 42 and error == "" and link_github is None
 
 
 def test_state_with_tampered_user_id_is_rejected(app):
@@ -124,7 +124,7 @@ def test_state_with_tampered_user_id_is_rejected(app):
         ).encode()
         forged = f"{_b64encode(forged_payload)}.{signature}"
 
-        user_id, error = verify_oauth_state(forged)
+        user_id, error, _ = verify_oauth_state(forged)
 
     assert user_id is None
     assert "signature" in error
@@ -134,7 +134,7 @@ def test_state_with_forged_signature_is_rejected(app):
     with app.app_context():
         state = make_oauth_state(1)
         encoded, _ = state.rsplit(".", 1)
-        user_id, error = verify_oauth_state(f"{encoded}.not-a-real-signature")
+        user_id, error, _ = verify_oauth_state(f"{encoded}.not-a-real-signature")
     assert user_id is None and "signature" in error
 
 
@@ -146,7 +146,7 @@ def test_expired_state_is_rejected(app):
             sort_keys=True,
         ).encode()
         expired = f"{_b64encode(payload)}.{_sign(payload)}"
-        user_id, error = verify_oauth_state(expired)
+        user_id, error, _ = verify_oauth_state(expired)
     assert user_id is None and "expired" in error
 
 
@@ -161,3 +161,46 @@ def test_states_are_unique_per_call(app):
     """Two concurrent attempts for the same user must not collide."""
     with app.app_context():
         assert make_oauth_state(1) != make_oauth_state(1)
+
+
+def test_state_can_carry_a_github_login_to_link(app):
+    """The MCP self-serve flow signs a GitHub login into the state so the
+    LinkedIn callback can map it automatically - see mcp_link_start."""
+    with app.app_context():
+        state = make_oauth_state(0, link_github="octocat")
+        user_id, error, link_github = verify_oauth_state(state)
+    assert user_id == 0 and error == "" and link_github == "octocat"
+
+
+def test_a_plain_sign_in_state_carries_no_github_login(app):
+    with app.app_context():
+        state = make_oauth_state(0)
+        _, _, link_github = verify_oauth_state(state)
+    assert link_github is None
+
+
+def test_a_tampered_github_login_is_rejected_with_the_whole_state(app):
+    """The link_github field is covered by the same signature as user_id -
+    swapping it for a different login must fail closed, not silently accept
+    the tampered value."""
+    with app.app_context():
+        state = make_oauth_state(0, link_github="real-login")
+        encoded, signature = state.rsplit(".", 1)
+
+        forged_payload = json.dumps(
+            {
+                "user_id": 0,
+                "exp": int(time.time()) + 600,
+                "nonce": "x",
+                "link_github": "attacker-login",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+        forged = f"{_b64encode(forged_payload)}.{signature}"
+
+        user_id, error, link_github = verify_oauth_state(forged)
+
+    assert user_id is None
+    assert link_github is None
+    assert "signature" in error

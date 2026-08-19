@@ -3,6 +3,7 @@ import {
 	BackendError,
 	deletePost,
 	editPost,
+	linkGithubStart,
 	listPosts,
 	normalizeBackendEnv,
 	resolveUserId,
@@ -55,6 +56,45 @@ describe("resolveUserId", () => {
 	it("throws BackendError on a real backend failure", async () => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
 		await expect(resolveUserId(env, "ada")).rejects.toBeInstanceOf(BackendError);
+	});
+});
+
+describe("linkGithubStart", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("POSTs the github username and returns the LinkedIn sign-in url", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ url: "https://www.linkedin.com/oauth/v2/authorization?..." }), {
+				status: 200,
+			}),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		const result = await linkGithubStart(env, "new-person");
+
+		expect(result.url).toContain("linkedin.com");
+		const [url, init] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/mcp/link-start");
+		expect(init.method).toBe("POST");
+		expect(init.headers.Authorization).toBe("Bearer test-key");
+		expect(JSON.parse(init.body)).toEqual({ github_username: "new-person" });
+	});
+
+	it("surfaces the backend's error message on failure", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(JSON.stringify({ error: "LinkedIn is not configured on this server." }), {
+					status: 503,
+				}),
+			),
+		);
+		await expect(linkGithubStart(env, "new-person")).rejects.toMatchObject({
+			message: "LinkedIn is not configured on this server.",
+			status: 503,
+		});
 	});
 });
 

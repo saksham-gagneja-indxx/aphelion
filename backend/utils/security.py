@@ -344,53 +344,69 @@ def verify_session_token(token: Optional[str]) -> Optional[int]:
     return uid if isinstance(uid, int) else None
 
 
-def make_oauth_state(user_id: int) -> str:
-    """Mint a signed, expiring state value bound to `user_id`."""
-    payload = json.dumps(
-        {
-            "user_id": user_id,
-            "exp": int(time.time()) + STATE_TTL_SECONDS,
-            # Makes each state unique even for the same user in the same second,
-            # so two concurrent attempts cannot collide.
-            "nonce": secrets.token_urlsafe(16),
-        },
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
+def make_oauth_state(user_id: int, link_github: Optional[str] = None) -> str:
+    """Mint a signed, expiring state value bound to `user_id`.
 
-    return f"{_b64encode(payload)}.{_sign(payload)}"
+    `link_github` rides along for the MCP self-serve flow (see
+    /api/mcp/link-start): a GitHub login that was already verified by the
+    Worker's own GitHub OAuth, carried through LinkedIn's redirect so the
+    callback can set User.github_username the moment identity is proven on
+    both sides - no admin_cli step required. It has nothing to do with which
+    account owns the state (still `user_id`, still LOGIN_USER_ID for a plain
+    sign-in) - it is just extra freight the signature also covers, so it
+    cannot be swapped for a different login in transit.
+    """
+    payload = {
+        "user_id": user_id,
+        "exp": int(time.time()) + STATE_TTL_SECONDS,
+        # Makes each state unique even for the same user in the same second,
+        # so two concurrent attempts cannot collide.
+        "nonce": secrets.token_urlsafe(16),
+    }
+    if link_github:
+        payload["link_github"] = link_github
+
+    encoded_payload = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+    return f"{_b64encode(encoded_payload)}.{_sign(encoded_payload)}"
 
 
-def verify_oauth_state(state: Optional[str]) -> Tuple[Optional[int], str]:
-    """Validate a state value. Returns (user_id, error_message).
+def verify_oauth_state(state: Optional[str]) -> Tuple[Optional[int], str, Optional[str]]:
+    """Validate a state value. Returns (user_id, error_message, link_github).
 
     user_id is None when validation fails. The error message is for logs, not
-    for the user - it can describe why a token was rejected.
+    for the user - it can describe why a token was rejected. link_github is
+    the GitHub login to map on success, if this state carries one (see
+    make_oauth_state), else None.
     """
     if not state or "." not in state:
-        return None, "missing or malformed state"
+        return None, "missing or malformed state", None
 
     encoded, signature = state.rsplit(".", 1)
 
     try:
         payload = _b64decode(encoded)
     except Exception:
-        return None, "state is not decodable"
+        return None, "state is not decodable", None
 
     # Verify BEFORE parsing: never act on unauthenticated data.
     if not hmac.compare_digest(_sign(payload), signature):
-        return None, "state signature does not verify"
+        return None, "state signature does not verify", None
 
     try:
         data = json.loads(payload)
     except ValueError:
-        return None, "state payload is not valid JSON"
+        return None, "state payload is not valid JSON", None
 
     if int(data.get("exp", 0)) < int(time.time()):
-        return None, "state has expired"
+        return None, "state has expired", None
 
     user_id = data.get("user_id")
     if not isinstance(user_id, int):
-        return None, "state carries no valid user_id"
+        return None, "state carries no valid user_id", None
 
-    return user_id, ""
+    link_github = data.get("link_github")
+    if link_github is not None and not isinstance(link_github, str):
+        link_github = None
+
+    return user_id, "", link_github

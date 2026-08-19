@@ -15,6 +15,7 @@ import {
 	deletePost,
 	editPost,
 	getLinkedInIdentity,
+	linkGithubStart,
 	listPosts,
 	listReels,
 	normalizeBackendEnv,
@@ -40,16 +41,24 @@ type Props = {
  * Who may call these tools at all - a coarse gate, independent of identity.
  * A GitHub login also has to resolve to an active backend account (see
  * resolveUserId in init() below) to get real tools; being on this allowlist
- * alone is not enough. Add usernames as a comma-separated
- * ALLOWED_GITHUB_USERNAMES secret.
+ * alone is not enough.
+ *
+ * Empty/unset ALLOWED_GITHUB_USERNAMES means OPEN, not closed: anyone who
+ * completes GitHub OAuth may attempt to connect. The real access control is
+ * downstream - resolveUserId + account approval (User.is_active, see
+ * backend/api/auth_routes.py's _resolve_user) - so an open front door here
+ * does not mean an open account; it means a stranger can reach the self-serve
+ * LinkedIn-link flow (see init() below) instead of being turned away before
+ * ever getting the chance to ask for access. Set ALLOWED_GITHUB_USERNAMES to
+ * go back to invite-only: a non-empty list is still enforced exactly as
+ * before.
  */
-function allowedUsers(env: Env): Set<string> {
-	return new Set(
-		(env.ALLOWED_GITHUB_USERNAMES ?? "")
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean),
-	);
+function allowedUsers(env: Env): Set<string> | null {
+	const configured = (env.ALLOWED_GITHUB_USERNAMES ?? "")
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
+	return configured.length > 0 ? new Set(configured) : null;
 }
 
 function textResult(text: string) {
@@ -75,9 +84,9 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		const allowed = allowedUsers(this.env);
 		const login = this.props!.login;
 
-		// Fail closed: an empty allowlist means nobody configured it yet, which
-		// should mean nobody gets tools rather than everybody does.
-		if (allowed.size === 0 || !allowed.has(login)) {
+		// null allowed = open (see allowedUsers). A configured, non-empty list
+		// is still a hard invite-only gate, same as before.
+		if (allowed !== null && !allowed.has(login)) {
 			this.server.tool(
 				"not_authorized",
 				"This GitHub account is not on the allowlist for this connector.",
@@ -110,14 +119,42 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		}
 
 		if (resolved === null) {
+			// No backend account is mapped to this GitHub login yet - which
+			// covers both "never connected" and "connected but still pending
+			// approval" (the backend deliberately doesn't distinguish those to
+			// this caller, see resolveUserId). Either way, hand back a real
+			// LinkedIn sign-in link rather than a dead end: on success it maps
+			// this GitHub login to whichever account signs in, automatically -
+			// no admin_cli step. Account approval (is_active) is untouched by
+			// this; a brand new signup still needs approving before real tools
+			// work, same as the web app.
+			let linkUrl: string | null = null;
+			let linkError: unknown = null;
+			try {
+				linkUrl = (await linkGithubStart(rawEnv, login)).url;
+			} catch (e) {
+				linkError = e;
+			}
+
 			this.server.tool(
 				"not_authorized",
-				"This GitHub account has no backend account mapped to it.",
+				"This GitHub account has no backend account mapped to it yet - connect LinkedIn to set one up.",
 				{},
-				async () => textResult(
-					`${login} is allowlisted but has no backend account mapped. ` +
-					`Ask the owner to run: python -m backend.admin_cli set-github <user> ${login}`,
-				),
+				async () => {
+					if (linkUrl) {
+						return textResult(
+							`${login} isn't connected to a Post Pilot account yet.\n\n` +
+							`👉 Sign in with LinkedIn here to connect this GitHub login to your account:\n${linkUrl}\n\n` +
+							`After signing in, come back and try again. New accounts need the owner's approval ` +
+							`before tools work for real - if it's been a bit, ask them to approve you.`,
+						);
+					}
+					return textResult(
+						`${login} has no backend account mapped, and starting LinkedIn sign-in failed ` +
+						`(${linkError instanceof BackendError ? linkError.message : String(linkError)}). ` +
+						`Ask the owner to run: python -m backend.admin_cli set-github <user> ${login}`,
+					);
+				},
 			);
 			return;
 		}
