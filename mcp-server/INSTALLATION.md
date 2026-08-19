@@ -1,215 +1,157 @@
-# Post Pilot MCP - Installation Guide
+# Installation Guide
 
-**For end users:** Follow these steps to connect the Post Pilot MCP to your Claude.
+Get Post Pilot MCP running in 5 minutes.
 
 ## Prerequisites
 
-You'll need:
-- ✅ A **Cloudflare account** (free) — https://dash.cloudflare.com
-- ✅ A **GitHub account** with a username
-- ✅ A running **Post Pilot backend** with credentials
-- ✅ **Your Post Pilot user ID** (from the admin panel)
+- GitHub account (for OAuth)
+- Cloudflare account (free)
+- Claude Desktop, claude.ai, or Claude Code
+- A Post Pilot backend deployment (or use the public one)
 
-## Installation (5 minutes)
+## Step 1: Create a GitHub OAuth App
 
-### 1. Fork or Clone this Repo
+1. Go to https://github.com/settings/apps
+2. Click "New GitHub App"
+3. Fill in:
+   - **App name**: `post-pilot-mcp` (or your name)
+   - **Homepage URL**: `https://post-pilot.example.com`
+   - **Authorization callback URL**: `https://your-worker.workers.dev/callback`
+4. Under "Permissions":
+   - Leave defaults (no special permissions needed)
+5. Click "Create GitHub App"
+6. Copy:
+   - Client ID
+   - Client Secret (generate one if needed)
 
+## Step 2: Set Up Cloudflare Worker
+
+### 2a. Clone the repository
 ```bash
-git clone https://github.com/saksham-gagneja-indxx/Social-Media-Manager.git
-cd Social-Media-Manager/mcp-server
+git clone https://github.com/saksham-gagneja-indxx/postpilot.git
+cd postpilot/mcp-server
 ```
 
-### 2. Install Dependencies
-
+### 2b. Install dependencies
 ```bash
 npm install
 ```
 
-### 3. Login to Cloudflare
-
+### 2c. Create `.env.production`
 ```bash
-npx wrangler login
+cp .env.example .env.production
 ```
 
-Browser popup → click "Authorize" → done.
+Edit `.env.production` with:
+```
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+BACKEND_API_URL=https://social-media-manager-api-wk5g.onrender.com
+BACKEND_API_KEY=your_api_key
+BACKEND_USER_ID=0
+ALLOWED_GITHUB_USERNAMES=your_github_username
+```
 
-### 4. Create KV Namespace
-
+### 2d. Deploy to Cloudflare
 ```bash
-npx wrangler kv namespace create oauth_states
+npx wrangler publish
 ```
 
-**Copy the `id`** from the output. Update `wrangler.jsonc` line 40:
+Copy your Worker URL (e.g., `https://post-pilot-abc123.workers.dev`)
 
-```jsonc
-{
-  "kv_namespaces": [
-    {
-      "binding": "OAUTH_KV",
-      "id": "paste-your-id-here"  // ← Your ID from step 4
-    }
-  ]
-}
-```
+## Step 3: Update GitHub OAuth Callback
 
-### 5. Create GitHub OAuth App
+1. Go to your GitHub App settings (https://github.com/settings/apps)
+2. Update "Authorization callback URL":
+   - Old: `https://your-worker.workers.dev/callback`
+   - New: `https://your-actual-worker-url.workers.dev/callback`
+3. Save
 
-Go to: https://github.com/settings/developers
+## Step 4: Install in Claude
 
-1. Click **"New OAuth App"**
-2. Fill in:
-   - **Application name:** `Post Pilot MCP`
-   - **Homepage URL:** `https://post-pilot.your-workers-subdomain.workers.dev`
-   - **Authorization callback URL:** `https://post-pilot.your-workers-subdomain.workers.dev/callback`
-3. Click **"Register application"**
-4. Copy **Client ID**
-5. Click **"Generate a new client secret"**
-6. Copy **Client Secret**
+### Claude Desktop
+1. Open Claude Desktop settings
+2. Under "MCP Servers", add:
+   ```json
+   {
+     "name": "post-pilot",
+     "url": "https://your-worker-url.workers.dev/mcp"
+   }
+   ```
+3. Restart Claude Desktop
 
-> Don't know your Workers subdomain? Run `npx wrangler whoami` — it shows your account info.
+### Claude Code / claude.ai
+1. Go to your deployment URL
+2. Click "Add to Claude Code" or paste the URL in the MCP server config
 
-### 6. Set 7 Secrets on Cloudflare
+### Browser / Cowork
+1. Navigate to your worker URL
+2. Follow the OAuth flow
 
-Run these commands one by one. When prompted, paste the values:
+## Step 5: Authenticate
 
-```bash
-npx wrangler secret put GITHUB_CLIENT_ID
-# Paste: <your-client-id-from-step-5>
-
-npx wrangler secret put GITHUB_CLIENT_SECRET
-# Paste: <your-client-secret-from-step-5>
-
-npx wrangler secret put BACKEND_API_URL
-# Paste: https://your-backend.onrender.com (or http://localhost:5000)
-
-npx wrangler secret put BACKEND_API_KEY
-# Paste: <your-api-key-from-post-pilot-backend>
-
-npx wrangler secret put BACKEND_USER_ID
-# Paste: <your-numeric-user-id>
-
-npx wrangler secret put ALLOWED_GITHUB_USERNAMES
-# Paste: <your-github-username>
-
-npx wrangler secret put COOKIE_ENCRYPTION_KEY
-# Paste: <run: openssl rand -hex 32>
-```
-
-### 7. Deploy to Cloudflare Workers
-
-```bash
-npx wrangler deploy
-```
-
-Output shows:
-```
-Deployed post-pilot triggers
-  https://post-pilot.<your-subdomain>.workers.dev
-```
-
-**Copy this URL** — you'll need it next.
-
-### 8. Update GitHub OAuth Redirect URI
-
-Go back to: https://github.com/settings/developers/applications/your-app-id
-
-Update **Authorization callback URL** to your deployed URL:
-```
-https://post-pilot.<your-subdomain>.workers.dev/callback
-```
-
-Click **"Update application"**.
-
-### 9. Add to Claude Desktop
-
-**On Windows/Mac:**
-- Create file `~/.claude/mcp_config.json`
-- Add:
-
-```json
-{
-  "mcpServers": {
-    "post-pilot": {
-      "url": "https://post-pilot.<your-subdomain>.workers.dev",
-      "auth": "oauth",
-      "type": "http"
-    }
-  }
-}
-```
-
-Replace `<your-subdomain>` with your actual Cloudflare Workers subdomain.
-
-**On Claude.ai or Claude Code CLI:**
-- Settings → MCP Servers
-- Add: `https://post-pilot.<your-subdomain>.workers.dev`
-- Auth type: OAuth
-
-### 10. Restart Claude & Test
-
-1. **Close Claude completely** (all windows)
-2. **Reopen Claude Desktop / Claude.ai**
-3. **Ask Claude:** `List my reels`
-4. **You'll see:** GitHub login prompt → Claude connects → Lists your reels ✨
+When you first use a Post Pilot tool in Claude:
+1. Claude will prompt you to authorize
+2. Click the GitHub OAuth link
+3. Authorize access to your GitHub account
+4. You'll be added to the allowlist
+5. Return to Claude—you're ready to use Post Pilot!
 
 ---
 
-## Troubleshooting
+## Using Google Drive for Video Upload
 
-| Issue | Solution |
-|---|---|
-| "Worker not found" | Wait 30-60 seconds. Cloudflare is slow. Try again. |
-| "Unauthorized" after deploy | Check `BACKEND_API_KEY` matches your backend's actual key in settings. |
-| No tools show up in Claude | Did you sign in with GitHub? Your username must be in `ALLOWED_GITHUB_USERNAMES`. |
-| "User not found" error | Go to Post Pilot `/admin` → find your numeric user ID → update `BACKEND_USER_ID`. |
-| Stuck on "Sign in with GitHub" | Clear browser cookies for `*.workers.dev`, then retry. |
-| "Secret not set" error | Re-run `npx wrangler secret put SECRETNAME` for missing secret. |
+Post Pilot can upload videos directly from your Google Drive:
 
----
+### 1. Get a Shareable Link
+- Right-click video in Drive → Share
+- Set to "Anyone with the link can view"
+- Copy the link
 
-## What Each Secret Does
+### 2. Convert to Direct Download
+From: `https://drive.google.com/file/d/ABC123XYZ/view`  
+To: `https://drive.google.com/uc?export=download&id=ABC123XYZ`
 
-| Secret | What It Controls |
-|---|---|
-| `GITHUB_CLIENT_ID` / `SECRET` | **Authentication** — who can access the tools (GitHub OAuth gating) |
-| `ALLOWED_GITHUB_USERNAMES` | **Authorization** — which GitHub users get access (comma-separated) |
-| `BACKEND_API_URL` | **Backend location** — where your Post Pilot API runs |
-| `BACKEND_API_KEY` | **Backend auth** — the API key (get from Post Pilot backend settings) |
-| `BACKEND_USER_ID` | **Which account** — all tools act as this user ID |
-| `COOKIE_ENCRYPTION_KEY` | **Session security** — encrypts OAuth state between GitHub and Claude |
-
----
-
-## Local Development (Optional)
-
-Want to test locally before deploying?
-
-```bash
-# Create .dev.vars with all 7 secrets (copy from wrangler secret list)
-npx wrangler dev
-
-# In another terminal:
-npx @modelcontextprotocol/inspector@latest
-# Enter: http://localhost:8788
+### 3. Tell Claude
 ```
+Upload this video from Google Drive:
+https://drive.google.com/uc?export=download&id=ABC123XYZ
+```
+
+Claude will fetch it server-side and upload to Post Pilot automatically.
 
 ---
 
 ## Next Steps
 
-Once installed:
-- ✅ `List my reels` — see your uploaded reels
-- ✅ `Draft a post about [topic]` — AI-powered caption drafting
-- ✅ `Suggest captions for [brief]` — three caption options
-- ✅ `Schedule my reel for tomorrow at 9am` — auto-posting
-- ✅ `Publish my reel now` — immediate LinkedIn publish
+- **Try it out**: Tell Claude "List my reels" or "Upload a video from Google Drive"
+- **Read the tools**: Check [README.md](README.md) for full tool reference
+- **Deploy updates**: `npm run build && npx wrangler publish`
 
 ---
 
-## Questions?
+## Troubleshooting
 
-- 📖 **Technical help:** Check [SETUP.md](SETUP.md) for more details
-- 🐛 **Report issues:** https://github.com/saksham-gagneja-indxx/Social-Media-Manager/issues
-- 💬 **Feedback:** sgagneja@indxx.com
+### "Not authorized" error
+- Check your GitHub username is in `ALLOWED_GITHUB_USERNAMES`
+- Restart Claude Desktop after updating settings
 
-Happy posting! 🚀
+### Worker not responding
+- Check Cloudflare dashboard for deployment status
+- Run `npx wrangler tail` to see logs
+
+### Google Drive upload fails
+- Verify link is public (test in browser)
+- Use the `export=download` format
+- Check video codec is H.264 (standard format)
+
+### LinkedIn publish fails
+- Ensure your backend has valid LinkedIn OAuth credentials
+- Check that the account you're posting as is authenticated
+- Verify the video uploaded successfully first
+
+---
+
+**Questions?** Check the [Technical Setup Guide](SETUP.md) for deeper details.
+
+Generated: 2026-08-19
