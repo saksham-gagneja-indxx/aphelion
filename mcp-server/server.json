@@ -1,54 +1,28 @@
 {
-  "name": "post-pilot",
-  "description": "Claude-powered LinkedIn social media management via MCP. Upload reels, generate AI captions, draft posts with conversation, schedule posts, and publish to LinkedIn.",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.saksham-gagneja-indxx/post-pilot",
+  "description": "LinkedIn automation with AI tools",
   "version": "0.0.1",
-  "author": "Saksham Gagneja",
-  "license": "MIT",
-  "homepage": "https://github.com/saksham-gagneja-indxx/postpilot",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/saksham-gagneja-indxx/postpilot.git"
-  },
   "tools": [
     {
       "name": "list_reels",
-      "description": "List all your uploaded reels ready to post"
+      "description": "List uploaded reels"
     },
     {
       "name": "upload_reel_from_url",
-      "description": "Upload a reel from a direct video link"
-    },
-    {
-      "name": "upload_reel",
-      "description": "Upload a reel by attaching a video file"
+      "description": "Upload reel from URL"
     },
     {
       "name": "draft_post",
-      "description": "Draft a LinkedIn post with AI assistance"
+      "description": "Draft LinkedIn post"
     },
     {
       "name": "publish_reel",
-      "description": "Publish a reel to LinkedIn immediately"
+      "description": "Publish to LinkedIn"
     },
     {
       "name": "schedule_reel",
-      "description": "Schedule a reel to post at a future time"
+      "description": "Schedule post"
     }
-  ],
-  "tags": [
-    "social-media",
-    "linkedin",
-    "ai",
-    "automation",
-    "content-management",
-    "scheduling"
-  ],
-  "featuresSupported": [
-    "Tools"
-  ],
-  "runtimeRequirements": {
-    "node": ">=18.0.0",
-    "environment": "Cloudflare Workers"
-  },
-  "configurationInstructions": "Set up LinkedIn OAuth credentials and Clerk authentication. Deploy to Cloudflare Workers using 'wrangler deploy'."
+  ]
 }
