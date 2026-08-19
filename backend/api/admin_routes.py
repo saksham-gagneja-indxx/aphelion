@@ -156,6 +156,56 @@ def set_active(user_id: int):
         db.close()
 
 
+@admin_bp.route("/users/<int:user_id>/github", methods=["POST"])
+def set_github(user_id: int):
+    """HTTP twin of `admin_cli set-github` / `admin_cli unset-github`.
+
+    Deliberately admin-only, same reasoning as the CLI version
+    (backend/admin_cli.py's cmd_set_github): letting a user set their own
+    github_username would let anyone claim an account by GitHub login alone,
+    with no proof they actually control it. Pass `{"github_username": null}`
+    (or omit it / send an empty string) to clear an existing mapping - e.g.
+    to re-test the self-serve MCP link flow (see auth_routes.py's
+    mcp_link_start) against an account that's already mapped.
+    """
+    data = request.get_json(silent=True) or {}
+    github_username = (data.get("github_username") or "").strip() or None
+
+    db = get_session()
+    try:
+        target = db.query(User).filter(User.id == user_id).first()
+        if target is None:
+            return jsonify({"error": "User not found"}), 404
+
+        if github_username is not None:
+            clash = (
+                db.query(User)
+                .filter(User.github_username == github_username, User.id != target.id)
+                .first()
+            )
+            if clash is not None:
+                return jsonify({
+                    "error": f"GitHub login {github_username!r} is already mapped to "
+                             f"account {clash.id}."
+                }), 409
+
+        target.github_username = github_username
+        audit(
+            db,
+            action="user.github_mapped" if github_username else "user.github_unmapped",
+            actor=current_user(),
+            target=f"user:{target.id}",
+            detail=github_username or "",
+            ip_address=request.remote_addr,
+        )
+        db.commit()
+        db.refresh(target)
+
+        return jsonify({"id": target.id, "github_username": target.github_username}), 200
+    finally:
+        db.close()
+
+
 @admin_bp.route("/encrypt-linkedin-tokens", methods=["POST"])
 def encrypt_linkedin_tokens_route():
     """One-off migration trigger: force any plaintext LinkedIn access/refresh

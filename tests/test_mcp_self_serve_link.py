@@ -221,6 +221,73 @@ def test_linking_does_not_steal_a_login_already_mapped_to_someone_else(app):
         db.close()
 
 
+# ---------------------------------------------------- admin set-github route
+
+
+def test_admin_can_clear_and_reset_a_github_mapping(app):
+    """HTTP twin of `admin_cli set-github`/`unset-github` - lets an admin
+    re-test the self-serve link flow against an already-mapped account
+    without shell access to the database."""
+    from backend.models.user import User
+    from backend.utils.database import get_session
+
+    db = get_session()
+    try:
+        user = User(linkedin_sub="sub-github-route", github_username="original-login", is_active=True)
+        db.add(user)
+        db.commit()
+        user_id = user.id
+    finally:
+        db.close()
+
+    with app.test_client() as client:
+        res = client.post(
+            f"/api/admin/users/{user_id}/github",
+            json={"github_username": None},
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+    assert res.status_code == 200
+    assert res.get_json()["github_username"] is None
+
+    db = get_session()
+    try:
+        assert db.query(User).filter(User.id == user_id).first().github_username is None
+    finally:
+        db.close()
+
+    with app.test_client() as client:
+        res = client.post(
+            f"/api/admin/users/{user_id}/github",
+            json={"github_username": "original-login"},
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+    assert res.status_code == 200
+    assert res.get_json()["github_username"] == "original-login"
+
+
+def test_admin_cannot_steal_a_github_login_via_the_route(app):
+    from backend.models.user import User
+    from backend.utils.database import get_session
+
+    db = get_session()
+    try:
+        owner = User(linkedin_sub="sub-github-owner", github_username="taken", is_active=True)
+        other = User(linkedin_sub="sub-github-other", is_active=True)
+        db.add_all([owner, other])
+        db.commit()
+        other_id = other.id
+    finally:
+        db.close()
+
+    with app.test_client() as client:
+        res = client.post(
+            f"/api/admin/users/{other_id}/github",
+            json={"github_username": "taken"},
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+    assert res.status_code == 409
+
+
 def test_a_plain_signin_state_leaves_github_username_untouched(app):
     """No link_github in the state (the ordinary web-app sign-in) must not
     touch github_username at all."""
