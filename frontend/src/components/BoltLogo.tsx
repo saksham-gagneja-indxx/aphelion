@@ -15,6 +15,7 @@ export default function BoltLogo({
       width={width}
       height={height}
       className={`block object-contain ${className}`}
+      style={{ transform: 'scale(2)', transformOrigin: 'left center' }}
     />
   )
 }
