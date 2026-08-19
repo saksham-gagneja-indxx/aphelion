@@ -247,9 +247,10 @@ def create_app():
                     "database": "disconnected"
                 }), 503
         except Exception as e:
+            logger.error(f"Health check failed: {e}")
             return jsonify({
                 "status": "unhealthy",
-                "error": str(e)
+                "error": "Health check failed"
             }), 500
 
     # API status endpoint
