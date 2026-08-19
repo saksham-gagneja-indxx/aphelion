@@ -6,7 +6,7 @@
  * and GET /api/users/1 (username + account details).
  * Now also shows LinkedIn connection status.
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getStatus, getUser } from '../api/client'
 import { getLinkedInStatus, getLinkedInAuthorizeUrl, openBlankTab } from '../api/auth'
@@ -42,6 +42,17 @@ export default function Settings() {
   }
 
   const [reconnectError, setReconnectError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'linkedin_auth_complete') {
+        linkedinQuery.refetch()
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [linkedinQuery])
 
   /**
    * Re-connect runs in a new tab, leaving this page in place.
