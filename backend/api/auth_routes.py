@@ -53,6 +53,7 @@ from backend.utils.security import (
     current_user,
     make_oauth_state,
     make_session_token,
+    require_admin,
     verify_oauth_state,
 )
 from backend.utils.timeutil import utcnow
@@ -130,17 +131,21 @@ def _frontend_url(status: str, token: str = None) -> str:
     return url
 
 
-def _authorize_url(user_id: int, client_id: Optional[str] = None) -> str:
+def _authorize_url(user_id: int, client_id: Optional[str] = None, link_github: Optional[str] = None) -> str:
     """`client_id` overrides the server's own app for a known account that
     configured its own LinkedIn app (see User.effective_linkedin_client_id).
     Left unset for the plain sign-in entry point, where there is no account
-    yet to have configured anything."""
+    yet to have configured anything.
+
+    `link_github` carries a GitHub login (already verified by the MCP
+    Worker's own OAuth) through to the callback, so it can set
+    User.github_username automatically - see /api/mcp/link-start."""
     settings = get_settings()
     params = {
         "response_type": "code",
         "client_id": client_id or settings.linkedin_client_id,
         "redirect_uri": settings.linkedin_redirect_uri,
-        "state": make_oauth_state(user_id),
+        "state": make_oauth_state(user_id, link_github=link_github),
         "scope": SCOPES,
     }
     return f"{AUTHORIZE_URL}?{urlencode(params)}"
@@ -200,6 +205,40 @@ def linkedin_start():
     return _authorize_response(user.id, client_id=client_id)
 
 
+@auth_bp.route("/mcp/link-start", methods=["POST"])
+def mcp_link_start():
+    """Begin self-serve onboarding for a GitHub identity with no backend
+    account mapped yet.
+
+    Machine-only (see require_admin's is_machine bypass): the caller is the
+    MCP Worker, which has already run its own GitHub OAuth and knows this
+    login is genuinely who they say they are. This endpoint hands back a
+    LinkedIn sign-in URL whose state carries that (already-verified) login
+    signed into itself - see make_oauth_state's link_github - so the
+    LinkedIn callback can set User.github_username automatically on success
+    instead of requiring `admin_cli set-github`.
+
+    This does NOT bypass account approval: a brand new account still lands
+    is_active=False same as any other sign-up (see _resolve_user), and still
+    needs approving before real tools work. It only removes the manual
+    identity-linking step - not the trust decision after it.
+    """
+    denied = require_admin()
+    if denied:
+        return denied
+
+    if not linkedin_configured():
+        return jsonify({"error": "LinkedIn is not configured on this server."}), 503
+
+    data = request.get_json(silent=True) or {}
+    github_username = (data.get("github_username") or "").strip()
+    if not github_username:
+        return jsonify({"error": "github_username is required"}), 400
+
+    url = _authorize_url(LOGIN_USER_ID, link_github=github_username)
+    return jsonify({"url": url}), 200
+
+
 @auth_bp.route("/auth/linkedin/callback", methods=["GET"])
 def linkedin_callback():
     """Exchange the code, sign the member in, store their publish token."""
@@ -213,7 +252,7 @@ def linkedin_callback():
 
     # Public endpoint: LinkedIn's redirect cannot carry a bearer token. The
     # signed state IS the authorization - nothing is written unless it verifies.
-    state_user_id, state_error = verify_oauth_state(request.args.get("state"))
+    state_user_id, state_error, link_github = verify_oauth_state(request.args.get("state"))
     if state_user_id is None:
         logger.warning(f"LinkedIn callback rejected: {state_error}")
         return redirect(_frontend_url("state_mismatch"))
@@ -298,6 +337,29 @@ def linkedin_callback():
                 # Either sign-ups are closed, or a re-connect named an account
                 # that no longer exists. Neither should look like a crash.
                 return redirect(_frontend_url("not_permitted"))
+
+            if link_github and user.github_username != link_github:
+                # github_username is unique - a login already claimed by a
+                # DIFFERENT account must not be silently reassigned onto this
+                # one (whoever set it first, admin_cli or an earlier self-serve
+                # link, keeps it). Sign-in still proceeds either way; only the
+                # mapping is skipped.
+                conflict = (
+                    db.query(User)
+                    .filter(User.github_username == link_github, User.id != user.id)
+                    .first()
+                )
+                if conflict is not None:
+                    logger.warning(
+                        f"MCP self-serve link skipped: GitHub login {link_github!r} "
+                        f"already maps to user {conflict.id}, not {user.id}"
+                    )
+                else:
+                    user.github_username = link_github
+                    logger.info(
+                        f"Linked GitHub login {link_github!r} to user {user.id} "
+                        "via self-serve MCP flow"
+                    )
 
             user.store_linkedin_token(
                 access_token=access_token,

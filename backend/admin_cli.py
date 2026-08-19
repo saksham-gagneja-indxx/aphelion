@@ -304,39 +304,48 @@ def cmd_reset_users(args) -> int:
         db.close()
 
 
-def cmd_encrypt_linkedin_tokens(args) -> int:
+def encrypt_pending_linkedin_tokens(db) -> int:
     """Force every account's LinkedIn access/refresh token onto the encrypted
     column immediately, rather than waiting for each user's next sign-in or
     token refresh to self-heal the row (see backend/models/user.py's
     linkedin_access_token/linkedin_refresh_token properties).
 
     Idempotent and safe to re-run: a row with nothing on the legacy plaintext
-    column, or already migrated, is skipped.
+    column, or already migrated, is skipped. Returns the number migrated.
+
+    Shared between `admin_cli encrypt-linkedin-tokens` and
+    POST /api/admin/encrypt-linkedin-tokens (backend/api/admin_routes.py) -
+    the HTTP route exists because this database isn't reachable directly from
+    every environment that needs to trigger the one-off migration, but the
+    deployed API always is.
     """
+    candidates = (
+        db.query(User)
+        .filter(
+            (User._linkedin_access_token_legacy.isnot(None))
+            | (User._linkedin_refresh_token_legacy.isnot(None))
+        )
+        .all()
+    )
+    for user in candidates:
+        # Re-assigning through the property is what encrypts it and blanks
+        # the legacy column - see the setters in models/user.py.
+        if user._linkedin_access_token_legacy is not None:
+            user.linkedin_access_token = user._linkedin_access_token_legacy
+        if user._linkedin_refresh_token_legacy is not None:
+            user.linkedin_refresh_token = user._linkedin_refresh_token_legacy
+    db.commit()
+    return len(candidates)
+
+
+def cmd_encrypt_linkedin_tokens(args) -> int:
     db = get_session()
     try:
-        candidates = (
-            db.query(User)
-            .filter(
-                (User._linkedin_access_token_legacy.isnot(None))
-                | (User._linkedin_refresh_token_legacy.isnot(None))
-            )
-            .all()
-        )
-        if not candidates:
+        count = encrypt_pending_linkedin_tokens(db)
+        if count == 0:
             print("Nothing to migrate - no accounts have a plaintext token on file.")
-            return 0
-
-        for user in candidates:
-            # Re-assigning through the property is what encrypts it and
-            # blanks the legacy column - see the setters in models/user.py.
-            if user._linkedin_access_token_legacy is not None:
-                user.linkedin_access_token = user._linkedin_access_token_legacy
-            if user._linkedin_refresh_token_legacy is not None:
-                user.linkedin_refresh_token = user._linkedin_refresh_token_legacy
-
-        db.commit()
-        print(f"Migrated {len(candidates)} account(s) to encrypted token storage.")
+        else:
+            print(f"Migrated {count} account(s) to encrypted token storage.")
         return 0
     finally:
         db.close()
