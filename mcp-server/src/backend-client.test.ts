@@ -3,6 +3,7 @@ import {
 	BackendError,
 	deletePost,
 	editPost,
+	listPosts,
 	normalizeBackendEnv,
 	resolveUserId,
 	uploadReel,
@@ -301,6 +302,46 @@ describe("deletePost", () => {
 			message: "This post was already deleted.",
 			status: 409,
 		});
+	});
+});
+
+describe("listPosts", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("GETs the user's posts, newest first per the backend's own ordering", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					count: 2,
+					posts: [
+						{ id: 12, status: "scheduled", caption: "newest", scheduled_time: "2099-01-01T10:00:00", video_path: "a.mp4" },
+						{ id: 11, status: "posted", caption: "older", scheduled_time: null, video_path: "b.mp4" },
+					],
+				}),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		const result = await listPosts(env);
+
+		expect(result.posts[0].id).toBe(12);
+		const [url] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/users/15/posts");
+	});
+
+	it("appends a status filter as a query param when given", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ count: 0, posts: [] }), { status: 200 }),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		await listPosts(env, "scheduled");
+
+		const [url] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/users/15/posts?status=scheduled");
 	});
 });
 

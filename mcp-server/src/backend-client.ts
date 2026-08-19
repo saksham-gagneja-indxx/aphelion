@@ -417,7 +417,22 @@ export interface Post {
 	caption: string | null;
 	scheduled_time: string | null;
 	video_path: string;
+	created_at?: string;
 }
+
+/**
+ * All of this user's posts (any status), newest first - what lets a caller
+ * resolve "delete it" / "the one I just scheduled" / "edit my last post" to a
+ * numeric id without the user having to already know or dig up one. Backend
+ * already sorts by created_at desc (see routes.py's get_user_posts), so the
+ * first entry here is always the most recent.
+ */
+export const listPosts = (env: BackendEnv, status?: string) =>
+	call<{ count: number; posts: Post[] }>(
+		env,
+		"GET",
+		`/api/users/${env.BACKEND_USER_ID}/posts${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+	);
 
 export const createPost = (
 	env: BackendEnv,
