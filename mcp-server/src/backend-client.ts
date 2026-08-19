@@ -234,6 +234,25 @@ function filenameFromUrl(url: string): string {
 }
 
 /**
+ * A Google Drive "share" link (drive.google.com/file/d/ID/view, or
+ * open?id=ID) serves an HTML viewer page, not the file's bytes, even with
+ * sharing set to "Anyone with the link" - this is the single most common
+ * reason a real link fails here despite looking correct. Rewriting to the
+ * uc?export=download form fixes it automatically so the model never has to
+ * know the trick. Falls through unchanged for every other host.
+ */
+function resolveDirectUrl(url: string): string {
+	const match = url.match(
+		/drive\.google\.com\/(?:file\/d\/([\w-]+)|open\?[^#]*\bid=([\w-]+)|uc\?[^#]*\bid=([\w-]+))/,
+	);
+	const fileId = match?.[1] || match?.[2] || match?.[3];
+	if (fileId) {
+		return `https://drive.google.com/uc?export=download&id=${fileId}`;
+	}
+	return url;
+}
+
+/**
  * Upload a reel by having the Worker fetch it server-side from a direct,
  * publicly (or presigned-privately) reachable URL - the counterpart to
  * uploadReel() for files too large to pass through as base64. The model
@@ -245,9 +264,11 @@ export async function uploadReelFromUrl(
 	env: BackendEnv,
 	input: { url: string; filename?: string },
 ): Promise<{ success: true; message: string; reel: UploadedReel }> {
+	const directUrl = resolveDirectUrl(input.url);
+
 	let sourceRes: Response;
 	try {
-		sourceRes = await fetch(input.url);
+		sourceRes = await fetch(directUrl);
 	} catch (e) {
 		throw new BackendError(
 			`Could not fetch that URL: ${e instanceof Error ? e.message : String(e)}`,
@@ -259,6 +280,21 @@ export async function uploadReelFromUrl(
 		throw new BackendError(
 			`That URL returned HTTP ${sourceRes.status}. It needs to be a direct link to the video ` +
 				`file itself (not a share/preview page) and publicly reachable without login.`,
+			400,
+		);
+	}
+
+	// A share page or a Drive "can't scan this file for viruses" interstitial
+	// (common on larger files even with a corrected download link) both
+	// return 200 with an HTML body instead of the video - catch that before
+	// it gets uploaded as if it were valid content.
+	const contentType = sourceRes.headers.get("content-type") || "";
+	if (contentType.includes("text/html")) {
+		throw new BackendError(
+			"That link returned a webpage instead of the video file itself. For Google Drive, confirm " +
+				"sharing is set to \"Anyone with the link\" - very large files can also trigger Drive's " +
+				"virus-scan warning page, which blocks direct download entirely. For other hosts, the " +
+				"link must point straight at the file, not a preview/share page.",
 			400,
 		);
 	}

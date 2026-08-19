@@ -221,4 +221,47 @@ describe("uploadReelFromUrl", () => {
 		).rejects.toMatchObject({ status: 413 });
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 	});
+
+	it("rewrites a Google Drive share link to the direct-download form before fetching", async () => {
+		const fetchSpy = vi.fn().mockImplementation((url: string) => {
+			if (url === "https://drive.google.com/uc?export=download&id=ABC123xyz") {
+				return Promise.resolve(
+					new Response(videoBytes, { status: 200, headers: { "content-type": "video/mp4" } }),
+				);
+			}
+			if (url === "https://backend.example.com/api/upload") {
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({ success: true, message: "ok", reel: { filename: "reel.mp4", path: "x", duration_seconds: null, size_bytes: 2000 } }),
+						{ status: 201 },
+					),
+				);
+			}
+			throw new Error(`unexpected fetch to ${url}`);
+		});
+		vi.stubGlobal("fetch", fetchSpy);
+
+		await uploadReelFromUrl(env, {
+			url: "https://drive.google.com/file/d/ABC123xyz/view?usp=sharing",
+		});
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			"https://drive.google.com/uc?export=download&id=ABC123xyz",
+		);
+	});
+
+	it("rejects an HTML response (share page or Drive virus-scan interstitial) instead of uploading it", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response("<html>not a video</html>", {
+				status: 200,
+				headers: { "content-type": "text/html; charset=utf-8" },
+			}),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		await expect(
+			uploadReelFromUrl(env, { url: "https://cdn.example.com/actually-a-page.mp4" }),
+		).rejects.toMatchObject({ status: 400 });
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
 });
