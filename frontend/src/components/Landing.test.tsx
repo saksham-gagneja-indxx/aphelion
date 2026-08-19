@@ -34,19 +34,19 @@ describe('Landing page', () => {
     )
   })
 
-  it('reports sign-in as unavailable when Clerk is not configured', () => {
-    // vitest.config.ts pins VITE_CLERK_PUBLISHABLE_KEY to '' for every test -
-    // see its comment for why. Sign-in has exactly one path now (Clerk's
-    // modal, LinkedIn included as one of its providers), so with Clerk off
-    // there is deliberately no button to fall back to.
+  it('offers a direct LinkedIn sign-in link (Clerk sign-in is disabled)', () => {
+    // vitest.config.ts pins VITE_CLERK_PUBLISHABLE_KEY to '' for every test,
+    // and CLERK_SIGNIN_ENABLED (api/auth.ts) is false regardless - LinkedIn's
+    // own OAuth already grants identity + publish rights in one screen, so
+    // this is the only sign-in path there is now, not a fallback for a
+    // missing Clerk key.
     renderWithQuery(<Landing />)
-    expect(
-      screen.getAllByText('Sign-in is not configured on this server.').length,
-    ).toBeGreaterThan(0)
+    const links = screen.getAllByRole('link', { name: /Continue with LinkedIn/ })
+    expect(links.length).toBeGreaterThan(0)
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', expect.stringContaining('/api/auth/linkedin/login'))
+    }
     expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /Sign in with LinkedIn/ }),
-    ).not.toBeInTheDocument()
   })
 
   it('links the docs in-app rather than out to the repository', () => {

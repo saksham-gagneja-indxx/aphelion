@@ -90,6 +90,20 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
 export const CLERK_ENABLED = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
 
 /**
+ * Disabled for now, not deleted: LinkedIn's own OAuth already grants
+ * identity + publish permission in one consent screen (see
+ * backend/api/auth_routes.py's LOGIN_USER_ID flow) - for a LinkedIn-only
+ * product, routing sign-in through Clerk first and LinkedIn again later in
+ * Setup was a redundant second step, not an extra capability. Every place
+ * that used to branch on CLERK_ENABLED alone now also checks this flag, and
+ * falls back to a direct "Continue with LinkedIn" button
+ * (linkedInLoginUrl()) instead. Flip back to true (and nothing else) to
+ * restore the Clerk sign-in UI if a future need brings it back - non-LinkedIn
+ * identity, SSO, etc.
+ */
+export const CLERK_SIGNIN_ENABLED = false
+
+/**
  * Exchange a verified Clerk session token for this app's own session token.
  *
  * The backend re-verifies the token against Clerk's JWKS before trusting

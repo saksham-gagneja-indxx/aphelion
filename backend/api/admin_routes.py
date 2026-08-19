@@ -9,6 +9,7 @@ The frontend also hides admin UI from non-admins, but that is convenience.
 This is the actual enforcement.
 """
 
+import requests
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func, or_
 
@@ -19,6 +20,8 @@ from backend.models.user import User
 from backend.utils.database import get_session
 from backend.utils.logger import get_logger
 from backend.utils.security import current_user, require_admin
+
+USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
 
 logger = get_logger("social_media_automation.admin")
 
@@ -202,6 +205,62 @@ def set_github(user_id: int):
         db.refresh(target)
 
         return jsonify({"id": target.id, "github_username": target.github_username}), 200
+    finally:
+        db.close()
+
+
+@admin_bp.route("/users/<int:user_id>/backfill-linkedin-sub", methods=["POST"])
+def backfill_linkedin_sub(user_id: int):
+    """Repair tool for accounts stuck without a linkedin_sub.
+
+    auth_routes.py's reconnect flow used to store a fresh LinkedIn token
+    without ever recording the member's `sub` claim on the account - fixed
+    now (see _resolve_user), but any account that reconnected before that
+    fix is stuck: `sub` is what the plain LinkedIn sign-in path matches on,
+    so without it the account can never sign in that way again, only
+    however it was originally created (e.g. Clerk). Since the account
+    already has a valid, connected access token, this just asks LinkedIn
+    who that token belongs to and records it - no new OAuth round trip
+    needed.
+    """
+    db = get_session()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            return jsonify({"error": "User not found"}), 404
+        if user.linkedin_sub:
+            return jsonify({"id": user.id, "linkedin_sub": user.linkedin_sub, "changed": False}), 200
+        if not user.linkedin_access_token:
+            return jsonify({"error": "No LinkedIn access token on file for this account."}), 409
+
+        try:
+            resp = requests.get(
+                USERINFO_URL,
+                headers={"Authorization": f"Bearer {user.linkedin_access_token}"},
+                timeout=30,
+            )
+        except requests.RequestException as e:
+            return jsonify({"error": f"Could not reach LinkedIn: {e}"}), 502
+
+        if resp.status_code >= 400:
+            return jsonify({
+                "error": f"LinkedIn rejected the stored token (HTTP {resp.status_code}). "
+                         "It may need to be reconnected fresh instead."
+            }), 502
+
+        subject = (resp.json() or {}).get("sub")
+        if not subject:
+            return jsonify({"error": "LinkedIn's response carried no subject claim."}), 502
+
+        clash = db.query(User).filter(User.linkedin_sub == subject, User.id != user.id).first()
+        if clash is not None:
+            return jsonify({
+                "error": f"That LinkedIn identity is already mapped to account {clash.id}."
+            }), 409
+
+        user.linkedin_sub = subject
+        db.commit()
+        return jsonify({"id": user.id, "linkedin_sub": subject, "changed": True}), 200
     finally:
         db.close()
 

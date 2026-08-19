@@ -533,6 +533,21 @@ def _resolve_user(db, state_user_id: int, subject: str, userinfo: dict):
     if state_user_id != LOGIN_USER_ID:
         # Re-connect flow: the state names an existing account.
         user = db.query(User).filter(User.id == state_user_id).first()
+        if user is not None and not user.linkedin_sub:
+            # Backfill: an account created via Clerk (or any other identity
+            # path) has no linkedin_sub until it does. Without this, a
+            # Clerk-created account that connects LinkedIn here can still
+            # never sign in through the plain LinkedIn login path (which
+            # matches by linkedin_sub below) - only through Clerk, forever.
+            # Self-healing, same idea as the token-encryption migration: the
+            # first reconnect after this fix quietly fixes the gap.
+            clash = (
+                db.query(User)
+                .filter(User.linkedin_sub == subject, User.id != user.id)
+                .first()
+            )
+            if clash is None:
+                user.linkedin_sub = subject
         return user, False
 
     allowlisted = is_admin_sub(subject)

@@ -26,6 +26,7 @@ import { ClerkSessionBridge } from '../components/Landing'
 import {
   authorizeMcpConnector,
   CLERK_ENABLED,
+  CLERK_SIGNIN_ENABLED,
   getLinkedInAuthorizeUrl,
   getMe,
   linkedInLoginUrl,
@@ -123,7 +124,7 @@ export default function McpAuthorize() {
               connect. Check back with them, then try connecting from Claude again.
             </p>
           ) : !signedIn ? (
-            CLERK_ENABLED ? (
+            CLERK_ENABLED && CLERK_SIGNIN_ENABLED ? (
               <>
                 <SignInButton mode="modal">
                   <button type="button" className={`${BTN_PRIMARY} w-full justify-center`}>

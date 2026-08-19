@@ -2,19 +2,17 @@
  * Signed-out landing page.
  *
  * This is also the sign-in gate: App renders it whenever /api/me answers 401.
- * Clerk is the ONLY way in - one "Sign in" trigger, everywhere on this page,
- * always opening the same modal. Clerk's own "Don't have an account? Sign up"
- * link inside that modal covers sign-up, so there is deliberately no separate
- * sign-up button here to keep in sync with it.
  *
- * LinkedIn is reachable as one of Clerk's OAuth providers in that same modal -
- * there is no second, direct-to-LinkedIn button. That direct button used to
- * call this SERVER's own LinkedIn app straight from the landing page (bypassing
- * Clerk, and identity, entirely) purely to sign in; the identity question is
- * Clerk's job now. The server's own LinkedIn app is still used, unchanged, for
- * the thing only it can do: granting w_member_social publish rights, which
- * happens later in Setup once the visitor is already a recognised, signed-in
- * account - see backend/api/auth_routes.py's /auth/linkedin/start.
+ * Sign-in is a single "Continue with LinkedIn" button (linkedInLoginUrl()) -
+ * LinkedIn's own OAuth grants identity AND w_member_social publish rights in
+ * one consent screen (see backend/api/auth_routes.py's LOGIN_USER_ID flow),
+ * so there is nothing left for a separate identity step to do.
+ *
+ * Clerk sign-in (CLERK_SIGNIN_ENABLED in api/auth.ts, currently false) is
+ * disabled rather than removed: this page used to route through Clerk first
+ * and LinkedIn again later in Setup, which was a redundant second step for a
+ * LinkedIn-only product, not extra capability. Flip that flag back on to
+ * restore the Clerk modal here if a future need brings it back.
  *
  * Styled to render.com's structure — 80px/300 display type, square edges,
  * hairline rules, a white primary button — with violet as the only accent.
@@ -30,8 +28,17 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { SignInButton, useAuth } from '@clerk/clerk-react'
 import BoltLogo from './BoltLogo'
-import { CLERK_ENABLED, bridgeClerkSession, getGuestEnabled, signInAsGuest } from '../api/auth'
+import {
+  CLERK_ENABLED,
+  CLERK_SIGNIN_ENABLED,
+  bridgeClerkSession,
+  getGuestEnabled,
+  linkedInLoginUrl,
+  signInAsGuest,
+} from '../api/auth'
 import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW, META } from '../ui'
+
+const SHOW_CLERK_UI = CLERK_ENABLED && CLERK_SIGNIN_ENABLED
 
 /** The in-app docs, not the GitHub README: a visitor here has no repository
  *  access, and the page they need explains how to get an account. */
@@ -168,9 +175,10 @@ function ProductPreview() {
 /**
  * Bridges a Clerk sign-in into this app's own session, silently.
  *
- * Only ever mounted when CLERK_ENABLED (see the render below), so calling
+ * Only ever mounted when SHOW_CLERK_UI (see the render below), so calling
  * Clerk's hooks here unconditionally is safe - this component simply does not
- * exist in a deployment that hasn't configured Clerk.
+ * exist in a deployment that hasn't configured Clerk, or while
+ * CLERK_SIGNIN_ENABLED is off.
  *
  * Runs once Clerk reports the visitor as signed in: fetches a Clerk session
  * token, trades it for this app's own token (bridgeClerkSession), and
@@ -270,14 +278,16 @@ export default function Landing() {
             </Link>
           </div>
           <div className="flex items-center gap-3 scale-[0.8] origin-right">
-            {CLERK_ENABLED ? (
+            {SHOW_CLERK_UI ? (
               <SignInButton mode="modal">
                 <button type="button" className={BTN_PRIMARY}>
                   Sign in
                 </button>
               </SignInButton>
             ) : (
-              <span className={META}>Sign-in is not configured on this server.</span>
+              <a href={linkedInLoginUrl()} className={BTN_PRIMARY}>
+                Continue with LinkedIn
+              </a>
             )}
           </div>
         </div>
@@ -307,14 +317,13 @@ export default function Landing() {
           happened, and why.
         </p>
 
-        {/* One sign-in trigger, one place it lives. Clerk's own modal covers
-            sign-up ("Don't have an account?") and every OAuth provider,
-            LinkedIn included - there is nothing else to wire up here. Guest
-            is unrelated to identity: a real, sandboxed account for trying the
-            tool without any provider at all. */}
+        {/* One sign-in trigger, one place it lives: LinkedIn's own OAuth
+            grants identity and publish rights together, so there is nothing
+            else to wire up here. Guest is unrelated to identity: a real,
+            sandboxed account for trying the tool without any provider. */}
         <div className="animate-rise mt-10 flex w-full max-w-[560px] flex-col items-center justify-center gap-3 [animation-delay:.3s] scale-90">
           <div className="flex w-full flex-row items-center justify-center gap-3">
-            {CLERK_ENABLED ? (
+            {SHOW_CLERK_UI ? (
               <SignInButton mode="modal">
                 <button
                   type="button"
@@ -324,7 +333,12 @@ export default function Landing() {
                 </button>
               </SignInButton>
             ) : (
-              <p className={`${META} flex-1 text-center`}>Sign-in is not configured on this server.</p>
+              <a
+                href={linkedInLoginUrl()}
+                className={`${BTN_PRIMARY} flex-1 justify-center px-[13px] sm:px-[18px] py-3 sm:py-4 text-[13px] sm:text-[18px] whitespace-nowrap`}
+              >
+                Continue with LinkedIn
+              </a>
             )}
             {guestEnabled && (
               <button
@@ -337,7 +351,7 @@ export default function Landing() {
               </button>
             )}
           </div>
-          {CLERK_ENABLED && <ClerkSessionBridge />}
+          {SHOW_CLERK_UI && <ClerkSessionBridge />}
           <Link
             to={DOCS_PATH}
             className={`${BTN_OUTLINE} w-full justify-center px-8 py-3 sm:py-4 text-[13px] sm:text-[18px] hover:text-mist-50`}
