@@ -96,7 +96,7 @@ def test_link_start_returns_a_linkedin_url_carrying_the_login(app):
 
     state = parse_qs(urlparse(url).query)["state"][0]
     with app.app_context():
-        user_id, error, link_github = verify_oauth_state(state)
+        user_id, error, link_github, _ = verify_oauth_state(state)
     assert error == ""
     assert link_github == "octocat"
 

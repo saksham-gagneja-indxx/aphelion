@@ -177,7 +177,7 @@ function ProductPreview() {
  * invalidates the ['me'] query so App swaps the landing page for the app
  * without a manual reload - the same pattern the guest button uses.
  */
-function ClerkSessionBridge() {
+export function ClerkSessionBridge() {
   const { isSignedIn, isLoaded, getToken } = useAuth()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)

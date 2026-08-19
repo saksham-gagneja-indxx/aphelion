@@ -51,9 +51,11 @@ from backend.utils.database import get_session
 from backend.utils.logger import get_logger
 from backend.utils.security import (
     current_user,
+    make_mcp_connector_grant,
     make_oauth_state,
     make_session_token,
     require_admin,
+    verify_mcp_connector_grant,
     verify_oauth_state,
 )
 from backend.utils.timeutil import utcnow
@@ -138,7 +140,30 @@ def _frontend_url(status: str, token: str = None, mcp: bool = False) -> str:
     return url
 
 
-def _authorize_url(user_id: int, client_id: Optional[str] = None, link_github: Optional[str] = None) -> str:
+def _next_redirect(next_path: str, token: Optional[str] = None, error: Optional[str] = None) -> str:
+    """Build the post-OAuth redirect when the state carried a `next` (see
+    make_oauth_state) - lands back on that exact frontend path/query instead
+    of the normal dashboard or /mcp-connected. Used by the MCP connector
+    flow's /mcp-authorize page, which already knows why it's there from its
+    own query params and just needs the token (or an error) appended.
+    """
+    base = get_settings().frontend_url.rstrip("/")
+    sep = "&" if "?" in next_path else "?"
+    url = f"{base}{next_path}"
+    if error:
+        url += f"{sep}auth_error={error}"
+        sep = "&"
+    if token:
+        url += f"#token={token}"
+    return url
+
+
+def _authorize_url(
+    user_id: int,
+    client_id: Optional[str] = None,
+    link_github: Optional[str] = None,
+    next: Optional[str] = None,
+) -> str:
     """`client_id` overrides the server's own app for a known account that
     configured its own LinkedIn app (see User.effective_linkedin_client_id).
     Left unset for the plain sign-in entry point, where there is no account
@@ -146,13 +171,16 @@ def _authorize_url(user_id: int, client_id: Optional[str] = None, link_github: O
 
     `link_github` carries a GitHub login (already verified by the MCP
     Worker's own OAuth) through to the callback, so it can set
-    User.github_username automatically - see /api/mcp/link-start."""
+    User.github_username automatically - see /api/mcp/link-start.
+
+    `next` carries a frontend path to land on instead of the normal
+    dashboard - see make_oauth_state."""
     settings = get_settings()
     params = {
         "response_type": "code",
         "client_id": client_id or settings.linkedin_client_id,
         "redirect_uri": settings.linkedin_redirect_uri,
-        "state": make_oauth_state(user_id, link_github=link_github),
+        "state": make_oauth_state(user_id, link_github=link_github, next=next),
         "scope": SCOPES,
     }
     return f"{AUTHORIZE_URL}?{urlencode(params)}"
@@ -166,7 +194,8 @@ def _authorize_response(user_id: int, client_id: Optional[str] = None):
     fetches the URL through apiFetch instead and opens it in a new tab, which
     also leaves the current page intact while the member consents.
     """
-    url = _authorize_url(user_id, client_id=client_id)
+    next_path = request.args.get("next")
+    url = _authorize_url(user_id, client_id=client_id, next=next_path)
     if request.args.get("format") == "json":
         return jsonify({"url": url}), 200
     return redirect(url)
@@ -174,7 +203,12 @@ def _authorize_response(user_id: int, client_id: Optional[str] = None):
 
 @auth_bp.route("/auth/linkedin/login", methods=["GET"])
 def linkedin_login():
-    """Public sign-in entry point."""
+    """Public sign-in entry point.
+
+    `?next=/some/frontend/path` sends the browser there instead of the normal
+    dashboard once signed in - used by the MCP connector's /mcp-authorize
+    page (see make_oauth_state's `next`), which needs LinkedIn sign-in to
+    return to itself rather than to "/"."""
     if not linkedin_configured():
         return jsonify({
             "error": "LinkedIn sign-in is not configured on this server."
@@ -246,6 +280,72 @@ def mcp_link_start():
     return jsonify({"url": url}), 200
 
 
+@auth_bp.route("/mcp/authorize-connector", methods=["POST"])
+def mcp_authorize_connector():
+    """Approve one MCP connector authorization attempt as the signed-in user.
+
+    This is the piece that lets connecting Post Pilot skip GitHub (or any
+    third-party OAuth screen) entirely: the Cloudflare Worker's own OAuth
+    flow sends the browser to the WEBSITE instead of a third party, the
+    website is what actually authenticates them (however they normally sign
+    in here), and this endpoint is the last step of that - it hands back a
+    short-lived signed grant (see make_mcp_connector_grant) proving "the
+    person who just signed in on this website approved this exact connector
+    attempt". The frontend redirects the browser straight back to the
+    Worker's callback with it, which verifies it via
+    /mcp/verify-connector-grant below and finishes Claude's own handshake.
+
+    Deliberately requires a real human session, not a machine/API-key
+    caller: an API key has no single identity to grant a connector to.
+    """
+    user = current_user()
+    if user is None:
+        return jsonify({"error": "Sign in first."}), 401
+
+    data = request.get_json(silent=True) or {}
+    worker_state = (data.get("worker_state") or "").strip()
+    if not worker_state:
+        return jsonify({"error": "worker_state is required"}), 400
+
+    grant = make_mcp_connector_grant(user.id, worker_state)
+    return jsonify({"grant": grant}), 200
+
+
+@auth_bp.route("/mcp/verify-connector-grant", methods=["POST"])
+def mcp_verify_connector_grant():
+    """Redeem a grant minted by /mcp/authorize-connector.
+
+    Admin-or-machine, via require_admin: in practice always the Worker
+    itself (a machine caller, via BACKEND_API_KEY) completing its own OAuth
+    handshake with Claude - an ordinary signed-in user has no reason to call
+    this. Returns the account the grant was issued for, same shape as
+    /api/users/by-github/<username> so the Worker's downstream handling
+    stays the same regardless of which path resolved the identity.
+    """
+    denied = require_admin()
+    if denied:
+        return denied
+
+    data = request.get_json(silent=True) or {}
+    grant = data.get("grant")
+    worker_state = (data.get("worker_state") or "").strip()
+    if not worker_state:
+        return jsonify({"error": "worker_state is required"}), 400
+
+    user_id = verify_mcp_connector_grant(grant, worker_state)
+    if user_id is None:
+        return jsonify({"error": "Invalid or expired grant."}), 401
+
+    db = get_session()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None or not user.is_active:
+            return jsonify({"error": "No active account for that grant."}), 404
+        return jsonify({"id": user.id, "name": user.full_name, "role": user.role}), 200
+    finally:
+        db.close()
+
+
 @auth_bp.route("/auth/linkedin/callback", methods=["GET"])
 def linkedin_callback():
     """Exchange the code, sign the member in, store their publish token."""
@@ -259,16 +359,25 @@ def linkedin_callback():
 
     # Public endpoint: LinkedIn's redirect cannot carry a bearer token. The
     # signed state IS the authorization - nothing is written unless it verifies.
-    state_user_id, state_error, link_github = verify_oauth_state(request.args.get("state"))
+    state_user_id, state_error, link_github, next_path = verify_oauth_state(
+        request.args.get("state")
+    )
     if state_user_id is None:
         logger.warning(f"LinkedIn callback rejected: {state_error}")
         return redirect(_frontend_url("state_mismatch"))
 
     is_mcp_flow = bool(link_github)
 
+    def _redirect(status: str, token: Optional[str] = None):
+        """Route to `next` (see make_oauth_state) when the state carries one -
+        the MCP connector flow's /mcp-authorize page - else the usual target."""
+        if next_path:
+            return redirect(_next_redirect(next_path, token=token, error=None if token else status))
+        return redirect(_frontend_url(status, token=token, mcp=is_mcp_flow))
+
     code = request.args.get("code")
     if not code:
-        return redirect(_frontend_url("missing_code", mcp=is_mcp_flow))
+        return _redirect("missing_code")
 
     settings = get_settings()
 
@@ -306,12 +415,12 @@ def linkedin_callback():
                 f"LinkedIn token exchange failed "
                 f"({token_response.status_code}): {token_response.text[:300]}"
             )
-            return redirect(_frontend_url("token_failed", mcp=is_mcp_flow))
+            return _redirect("token_failed")
 
         token = token_response.json()
         access_token = token.get("access_token")
         if not access_token:
-            return redirect(_frontend_url("token_failed", mcp=is_mcp_flow))
+            return _redirect("token_failed")
 
         # Identity comes from the id_token when there is one, and only falls
         # back to the userinfo endpoint otherwise. See _claims_from_id_token.
@@ -328,12 +437,12 @@ def linkedin_callback():
                     f"LinkedIn userinfo failed "
                     f"({userinfo_response.status_code}): {userinfo_response.text[:300]}"
                 )
-                return redirect(_frontend_url("userinfo_failed", mcp=is_mcp_flow))
+                return _redirect("userinfo_failed")
             userinfo = userinfo_response.json()
 
         subject = userinfo.get("sub")
         if not subject:
-            return redirect(_frontend_url("userinfo_failed", mcp=is_mcp_flow))
+            return _redirect("userinfo_failed")
 
         expires_at = None
         if token.get("expires_in"):
@@ -345,7 +454,7 @@ def linkedin_callback():
             if user is None:
                 # Either sign-ups are closed, or a re-connect named an account
                 # that no longer exists. Neither should look like a crash.
-                return redirect(_frontend_url("not_permitted", mcp=is_mcp_flow))
+                return _redirect("not_permitted")
 
             if link_github and user.github_username != link_github:
                 # github_username is unique - a login already claimed by a
@@ -398,18 +507,18 @@ def linkedin_callback():
 
             if not user.is_active:
                 logger.info(f"Sign-in by pending account {user.id} ({user.email})")
-                return redirect(_frontend_url("pending_approval", mcp=is_mcp_flow))
+                return _redirect("pending_approval")
 
             session_token = make_session_token(user.id)
             logger.info(f"✅ Signed in: {user.full_name} (id={user.id}, {user.role})")
         finally:
             db.close()
 
-        return redirect(_frontend_url("connected", token=session_token, mcp=is_mcp_flow))
+        return _redirect("connected", token=session_token)
 
     except requests.RequestException as e:
         logger.error(f"LinkedIn OAuth network failure: {e}")
-        return redirect(_frontend_url("network_error", mcp=is_mcp_flow))
+        return _redirect("network_error")
 
 
 def _resolve_user(db, state_user_id: int, subject: str, userinfo: dict):
