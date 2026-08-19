@@ -10,7 +10,7 @@ This is the actual enforcement.
 """
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from backend.models.audit import AuditLog
 from backend.models.audit import record as audit
@@ -185,8 +185,20 @@ def admin_stats():
         total_users = db.query(User).count()
         active_users = db.query(User).filter(User.is_active.is_(True)).count()
         pending = db.query(User).filter(User.is_active.is_(False)).count()
+        # linkedin_access_token is a Python property (encrypted at rest, see
+        # backend/models/user.py) rather than a Column, so it can't be
+        # filtered on directly at the class level - check both the encrypted
+        # column and the legacy plaintext one a not-yet-migrated row might
+        # still carry.
         connected = (
-            db.query(User).filter(User.linkedin_access_token.isnot(None)).count()
+            db.query(User)
+            .filter(
+                or_(
+                    User.linkedin_access_token_encrypted.isnot(None),
+                    User._linkedin_access_token_legacy.isnot(None),
+                )
+            )
+            .count()
         )
 
         by_status = dict(

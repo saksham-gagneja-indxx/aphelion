@@ -304,6 +304,44 @@ def cmd_reset_users(args) -> int:
         db.close()
 
 
+def cmd_encrypt_linkedin_tokens(args) -> int:
+    """Force every account's LinkedIn access/refresh token onto the encrypted
+    column immediately, rather than waiting for each user's next sign-in or
+    token refresh to self-heal the row (see backend/models/user.py's
+    linkedin_access_token/linkedin_refresh_token properties).
+
+    Idempotent and safe to re-run: a row with nothing on the legacy plaintext
+    column, or already migrated, is skipped.
+    """
+    db = get_session()
+    try:
+        candidates = (
+            db.query(User)
+            .filter(
+                (User._linkedin_access_token_legacy.isnot(None))
+                | (User._linkedin_refresh_token_legacy.isnot(None))
+            )
+            .all()
+        )
+        if not candidates:
+            print("Nothing to migrate - no accounts have a plaintext token on file.")
+            return 0
+
+        for user in candidates:
+            # Re-assigning through the property is what encrypts it and
+            # blanks the legacy column - see the setters in models/user.py.
+            if user._linkedin_access_token_legacy is not None:
+                user.linkedin_access_token = user._linkedin_access_token_legacy
+            if user._linkedin_refresh_token_legacy is not None:
+                user.linkedin_refresh_token = user._linkedin_refresh_token_legacy
+
+        db.commit()
+        print(f"Migrated {len(candidates)} account(s) to encrypted token storage.")
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_purge_guests(args) -> int:
     """Delete guest accounts, which accumulate one per visitor."""
     db = get_session()
@@ -357,6 +395,11 @@ def main(argv=None) -> int:
     p = sub.add_parser("reset-users", help="delete all accounts")
     p.add_argument("--yes", action="store_true", help="confirm")
     p.set_defaults(func=cmd_reset_users)
+
+    sub.add_parser(
+        "encrypt-linkedin-tokens",
+        help="force any plaintext LinkedIn access/refresh tokens onto encrypted storage now",
+    ).set_defaults(func=cmd_encrypt_linkedin_tokens)
 
     p = sub.add_parser("purge-guests", help="delete all guest accounts")
     p.add_argument("--yes", action="store_true", help="confirm")
