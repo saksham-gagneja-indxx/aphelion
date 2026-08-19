@@ -89,6 +89,12 @@ jobs:
           SECRET_KEY: test_secret
           CLERK_SECRET_KEY: test_clerk_key
           ENCRYPTION_KEY: ucWu8K-SJZDKTDAujfaFxAqvQOl5MEFyDmoc94mHELg=
+          # Required (non-Optional) Settings fields, same placeholder
+          # convention as .env.example - the app itself treats these as
+          # "not configured" via is_placeholder(), not as an error, but
+          # pydantic still requires *something* to be present.
+          INSTAGRAM_USERNAME: your_instagram_username
+          INSTAGRAM_PASSWORD: your_instagram_password
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
