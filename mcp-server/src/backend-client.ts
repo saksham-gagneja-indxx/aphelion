@@ -417,7 +417,22 @@ export interface Post {
 	caption: string | null;
 	scheduled_time: string | null;
 	video_path: string;
+	created_at?: string;
 }
+
+/**
+ * All of this user's posts (any status), newest first - what lets a caller
+ * resolve "delete it" / "the one I just scheduled" / "edit my last post" to a
+ * numeric id without the user having to already know or dig up one. Backend
+ * already sorts by created_at desc (see routes.py's get_user_posts), so the
+ * first entry here is always the most recent.
+ */
+export const listPosts = (env: BackendEnv, status?: string) =>
+	call<{ count: number; posts: Post[] }>(
+		env,
+		"GET",
+		`/api/users/${env.BACKEND_USER_ID}/posts${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+	);
 
 export const createPost = (
 	env: BackendEnv,
@@ -445,3 +460,29 @@ export const publishNow = (env: BackendEnv, postId: number) =>
 		"POST",
 		`/api/posts/${postId}/publish`,
 	);
+
+/**
+ * Remove a post regardless of its current status - retracts from LinkedIn if
+ * already posted, cancels the scheduler job if scheduled, otherwise just
+ * marks it cancelled. Mirrors backend/api/publish_routes.py's delete_post,
+ * the single entry point so this client never has to know in advance which
+ * of those three cases applies.
+ */
+export const deletePost = (env: BackendEnv, postId: number) =>
+	call<{ message: string; post: Post }>(env, "POST", `/api/posts/${postId}/delete`);
+
+/**
+ * Update a not-yet-published post's caption and/or scheduled time. Backend
+ * refuses with a 409 (surfaced as a BackendError) on a POSTED post - LinkedIn
+ * has no API to edit a live post's content, so that case has to be handled by
+ * deleting and republishing instead, not retried here.
+ */
+export const editPost = (
+	env: BackendEnv,
+	postId: number,
+	input: { caption?: string; scheduledTime?: string },
+) =>
+	call<{ message: string; post: Post }>(env, "PATCH", `/api/posts/${postId}`, {
+		caption: input.caption,
+		scheduled_time: input.scheduledTime,
+	});

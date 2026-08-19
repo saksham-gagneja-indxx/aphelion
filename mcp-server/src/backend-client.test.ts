@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
 	BackendError,
+	deletePost,
+	editPost,
+	listPosts,
 	normalizeBackendEnv,
 	resolveUserId,
 	uploadReel,
@@ -263,5 +266,118 @@ describe("uploadReelFromUrl", () => {
 			uploadReelFromUrl(env, { url: "https://cdn.example.com/actually-a-page.mp4" }),
 		).rejects.toMatchObject({ status: 400 });
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("deletePost", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("POSTs to /api/posts/<id>/delete and returns the updated post", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({ message: "Deleted", post: { id: 7, status: "cancelled", caption: null, scheduled_time: null, video_path: "x" } }),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		const result = await deletePost(env, 7);
+
+		expect(result.post.status).toBe("cancelled");
+		const [url, init] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/posts/7/delete");
+		expect(init.method).toBe("POST");
+	});
+
+	it("surfaces a 409 as a BackendError instead of throwing something opaque", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(JSON.stringify({ error: "This post was already deleted." }), { status: 409 }),
+			),
+		);
+		await expect(deletePost(env, 7)).rejects.toMatchObject({
+			message: "This post was already deleted.",
+			status: 409,
+		});
+	});
+});
+
+describe("listPosts", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("GETs the user's posts, newest first per the backend's own ordering", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					count: 2,
+					posts: [
+						{ id: 12, status: "scheduled", caption: "newest", scheduled_time: "2099-01-01T10:00:00", video_path: "a.mp4" },
+						{ id: 11, status: "posted", caption: "older", scheduled_time: null, video_path: "b.mp4" },
+					],
+				}),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		const result = await listPosts(env);
+
+		expect(result.posts[0].id).toBe(12);
+		const [url] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/users/15/posts");
+	});
+
+	it("appends a status filter as a query param when given", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ count: 0, posts: [] }), { status: 200 }),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		await listPosts(env, "scheduled");
+
+		const [url] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/users/15/posts?status=scheduled");
+	});
+});
+
+describe("editPost", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("PATCHes /api/posts/<id> with caption and scheduledTime", async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({ message: "Updated", post: { id: 9, status: "scheduled", caption: "new", scheduled_time: "2099-01-01T10:00:00", video_path: "x" } }),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchSpy);
+
+		const result = await editPost(env, 9, { caption: "new", scheduledTime: "2099-01-01T10:00" });
+
+		expect(result.post.caption).toBe("new");
+		const [url, init] = fetchSpy.mock.calls[0];
+		expect(url).toBe("https://backend.example.com/api/posts/9");
+		expect(init.method).toBe("PATCH");
+		expect(JSON.parse(init.body)).toEqual({ caption: "new", scheduled_time: "2099-01-01T10:00" });
+	});
+
+	it("surfaces the backend's refusal to edit a published post", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({ error: "LinkedIn does not support editing a published post." }),
+					{ status: 409 },
+				),
+			),
+		);
+		await expect(editPost(env, 9, { caption: "x" })).rejects.toMatchObject({ status: 409 });
 	});
 });

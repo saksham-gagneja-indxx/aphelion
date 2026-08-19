@@ -12,7 +12,10 @@ import {
 	BackendError,
 	composerTurn,
 	createPost,
+	deletePost,
+	editPost,
 	getLinkedInIdentity,
+	listPosts,
 	listReels,
 	normalizeBackendEnv,
 	publishNow,
@@ -182,6 +185,9 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					`4. **draft_post**\n   Plan and prepare a post (pick reel, write caption, set time)\n\n` +
 					`5. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
 					`6. **schedule_reel**\n   Schedule a reel to post later\n\n` +
+					`7. **list_posts**\n   See your posts (draft/scheduled/published/cancelled) with their ids - say "delete it" or "the last one" and this gets called automatically, no need to look up an id yourself\n\n` +
+					`8. **delete_reel_post**\n   Delete a post - retracts it from LinkedIn first if it's already live\n\n` +
+					`9. **edit_reel_post**\n   Change a not-yet-published post's caption or scheduled time\n\n` +
 					`**⚡ Pro Tips:**\n` +
 					`• Start with "getting_started" for a quick guide\n` +
 					`• If someone attaches a video: don't try to read/re-encode it yourself. If Google Drive is connected, upload it there first, share the link, then use upload_reel_from_url. Otherwise ask them for a link or point them to the web app.\n` +
@@ -305,7 +311,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						aiGeneratedCaption: true,
 					});
 					const result = await publishNow(backendEnv, post.id);
-					return textResult(`${identityLine}\n\nPublished: ${result.url}`);
+					return textResult(`${identityLine}\n\nPublished: ${result.url}\nPost id: ${post.id}`);
 				} catch (e) {
 					return errorResult(e);
 				}
@@ -335,6 +341,68 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return textResult(
 						`Scheduled for ${result.post.scheduled_time}. Post id ${result.post.id}.`,
 					);
+				} catch (e) {
+					return errorResult(e);
+				}
+			},
+		);
+
+		this.server.tool(
+			"list_posts",
+			"📋 List this account's posts (drafts, scheduled, published, cancelled) - newest first - each with its numeric id, status, caption, and video filename. Call this BEFORE delete_reel_post or edit_reel_post whenever the person hasn't given you a numeric post id (e.g. 'delete it', 'delete the last one', 'edit my most recent post', 'cancel the one I just scheduled'): the first entry in the list is the most recent post, so match on that or on caption/filename instead of asking the person to look up an id themselves - they generally don't know it and shouldn't need to.",
+			{
+				status: z.string().optional().describe("Filter to one status: draft, queued, scheduled, posted, failed, cancelled. Omit to list all."),
+			},
+			async ({ status }) => {
+				try {
+					const { posts } = await listPosts(backendEnv, status);
+					if (posts.length === 0) {
+						return textResult("No posts found.");
+					}
+					const lines = posts.map((p) => {
+						const filename = p.video_path.split(/[\\/]/).pop();
+						const captionPreview = p.caption ? `"${p.caption.slice(0, 60)}${p.caption.length > 60 ? "…" : ""}"` : "(no caption)";
+						return `- Post id ${p.id} [${p.status}] ${filename} ${captionPreview}` +
+							(p.scheduled_time ? ` — scheduled ${p.scheduled_time}` : "");
+					});
+					return textResult(lines.join("\n"));
+				} catch (e) {
+					return errorResult(e);
+				}
+			},
+		);
+
+		this.server.tool(
+			"delete_reel_post",
+			"🗑️ Delete a post by its numeric id. If it's already live on LinkedIn, this retracts it from the platform too - not just the local record. If it's still scheduled, this cancels the pending job so it won't fire. Irreversible. If you don't already have the numeric id from this conversation (e.g. the person just says 'delete it' or 'delete the last one'), call list_posts first and use the matching post's id - don't ask the person to look up an id themselves.",
+			{
+				postId: z.number().describe("The post's numeric id - from list_posts, or a 'Post id: 28' line earlier in this conversation."),
+			},
+			async ({ postId }) => {
+				try {
+					const result = await deletePost(backendEnv, postId);
+					return textResult(`${result.message}. Post id ${result.post.id}, status: ${result.post.status}.`);
+				} catch (e) {
+					return errorResult(e);
+				}
+			},
+		);
+
+		this.server.tool(
+			"edit_reel_post",
+			"✏️ Edit a not-yet-published post's caption and/or scheduled time, by its numeric id. LinkedIn has no way to edit a post that's already live - this will refuse with an error for a POSTED post; delete_reel_post it and publish_reel a new one instead. Changing scheduledTime on an already-scheduled post correctly re-registers the timer, it doesn't just relabel it. If you don't already have the numeric id (e.g. 'edit my last post's caption'), call list_posts first and use the matching post's id - don't ask the person to look up an id themselves.",
+			{
+				postId: z.number().describe("The post's numeric id - from list_posts, or a 'Post id: 28' line earlier in this conversation."),
+				caption: z.string().optional().describe("New caption text, if changing it."),
+				scheduledTime: z
+					.string()
+					.optional()
+					.describe("New local datetime as YYYY-MM-DDTHH:MM, in the account's configured timezone. Must be in the future."),
+			},
+			async ({ postId, caption, scheduledTime }) => {
+				try {
+					const result = await editPost(backendEnv, postId, { caption, scheduledTime });
+					return textResult(`${result.message}. Post id ${result.post.id}, status: ${result.post.status}, scheduled_time: ${result.post.scheduled_time ?? "n/a"}.`);
 				} catch (e) {
 					return errorResult(e);
 				}
