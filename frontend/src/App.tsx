@@ -23,6 +23,7 @@ import Docs from './pages/Docs'
 import Setup from './pages/Setup'
 import Admin from './pages/Admin'
 import Console from './pages/Console'
+import McpConnected from './pages/McpConnected'
 import { BANNER_DANGER, BTN_OUTLINE } from './ui'
 
 /**
@@ -359,6 +360,18 @@ export default function App() {
 
     completeLinkedInAuth()
   }, [])
+
+  // The MCP self-serve link flow's landing page (see backend/api/auth_routes.py's
+  // _frontend_url mcp flag) - a standalone page reached before any session may
+  // exist yet (a brand-new account is very often still pending approval), so
+  // it has to render before the /api/me check below, not after it.
+  if (window.location.pathname === '/mcp-connected') {
+    return (
+      <Routes>
+        <Route path="/mcp-connected" element={<McpConnected />} />
+      </Routes>
+    )
+  }
 
   // Global loading state while checking session
   if (isPending) {

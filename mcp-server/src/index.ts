@@ -145,8 +145,9 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						return textResult(
 							`${login} isn't connected to a Post Pilot account yet.\n\n` +
 							`👉 Sign in with LinkedIn here to connect this GitHub login to your account:\n${linkUrl}\n\n` +
-							`After signing in, come back and try again. New accounts need the owner's approval ` +
-							`before tools work for real - if it's been a bit, ask them to approve you.`,
+							`That page brings you back here on its own once it's done - just try your request again ` +
+							`after. New accounts need the owner's approval before tools work for real - if it's been ` +
+							`a bit, ask them to approve you.`,
 						);
 					}
 					return textResult(

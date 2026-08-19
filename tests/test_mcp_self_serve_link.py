@@ -173,7 +173,10 @@ def test_a_successful_signin_maps_the_github_login_automatically(app):
 
     # Self-serve linking must not bypass approval - a second-or-later account
     # with no allowlist configured still lands pending, same as the web app.
-    assert "linkedin=pending_approval" in res.headers["Location"]
+    # The redirect target is the standalone /mcp-connected page, not the
+    # normal dashboard landing - see _frontend_url's mcp flag.
+    assert "/mcp-connected" in res.headers["Location"]
+    assert "status=pending_approval" in res.headers["Location"]
 
     db = get_session()
     try:
@@ -297,9 +300,14 @@ def test_a_plain_signin_state_leaves_github_username_untouched(app):
     from backend.utils.security import make_oauth_state
 
     state = make_oauth_state(LOGIN_USER_ID)
-    _run_callback(
+    res = _run_callback(
         app, state, {"access_token": "at", "expires_in": 3600, "id_token": _id_token(CLAIMS)}
     )
+
+    # A plain sign-in still lands on the normal dashboard redirect, not the
+    # MCP standalone page - only a link_github-carrying state routes there.
+    assert "/mcp-connected" not in res.headers["Location"]
+    assert "linkedin=connected" in res.headers["Location"]
 
     db = get_session()
     try:
@@ -308,3 +316,15 @@ def test_a_plain_signin_state_leaves_github_username_untouched(app):
         assert user.github_username is None
     finally:
         db.close()
+
+
+def test_a_successful_mcp_signin_redirects_to_the_standalone_page(app):
+    res = _run_callback(
+        app,
+        _authorize_url_for(app, "fresh-mcp-user"),
+        {"access_token": "at", "expires_in": 3600, "id_token": _id_token(CLAIMS)},
+    )
+    # No pre-existing account, so this is the bootstrap first-user-is-admin
+    # case - active immediately, landing on "connected" rather than pending.
+    assert "/mcp-connected" in res.headers["Location"]
+    assert "status=connected" in res.headers["Location"]

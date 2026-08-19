@@ -116,16 +116,23 @@ def _claims_from_id_token(id_token: Optional[str]) -> dict:
     return claims
 
 
-def _frontend_url(status: str, token: str = None) -> str:
+def _frontend_url(status: str, token: str = None, mcp: bool = False) -> str:
     """Build the post-OAuth redirect back to the SPA.
 
     The session token is delivered in the URL FRAGMENT, not the query string.
     Fragments are never sent to a server, so the token stays out of access
     logs and out of Referer headers. The SPA reads it and strips it from the
     address bar.
+
+    `mcp=True` routes to a distinct, standalone page (/mcp-connected) instead
+    of the normal dashboard landing - this callback was reached via
+    mcp_link_start's self-serve flow, so the person's next real move is
+    switching back to the Claude tab, not looking at a web dashboard. That
+    page shows a brief confirmation and auto-redirects to claude.ai itself.
     """
     base = get_settings().frontend_url.rstrip("/")
-    url = f"{base}/?linkedin={status}"
+    path = "/mcp-connected" if mcp else "/"
+    url = f"{base}{path}?{'linkedin' if not mcp else 'status'}={status}"
     if token:
         url += f"#token={token}"
     return url
@@ -257,9 +264,11 @@ def linkedin_callback():
         logger.warning(f"LinkedIn callback rejected: {state_error}")
         return redirect(_frontend_url("state_mismatch"))
 
+    is_mcp_flow = bool(link_github)
+
     code = request.args.get("code")
     if not code:
-        return redirect(_frontend_url("missing_code"))
+        return redirect(_frontend_url("missing_code", mcp=is_mcp_flow))
 
     settings = get_settings()
 
@@ -297,12 +306,12 @@ def linkedin_callback():
                 f"LinkedIn token exchange failed "
                 f"({token_response.status_code}): {token_response.text[:300]}"
             )
-            return redirect(_frontend_url("token_failed"))
+            return redirect(_frontend_url("token_failed", mcp=is_mcp_flow))
 
         token = token_response.json()
         access_token = token.get("access_token")
         if not access_token:
-            return redirect(_frontend_url("token_failed"))
+            return redirect(_frontend_url("token_failed", mcp=is_mcp_flow))
 
         # Identity comes from the id_token when there is one, and only falls
         # back to the userinfo endpoint otherwise. See _claims_from_id_token.
@@ -319,12 +328,12 @@ def linkedin_callback():
                     f"LinkedIn userinfo failed "
                     f"({userinfo_response.status_code}): {userinfo_response.text[:300]}"
                 )
-                return redirect(_frontend_url("userinfo_failed"))
+                return redirect(_frontend_url("userinfo_failed", mcp=is_mcp_flow))
             userinfo = userinfo_response.json()
 
         subject = userinfo.get("sub")
         if not subject:
-            return redirect(_frontend_url("userinfo_failed"))
+            return redirect(_frontend_url("userinfo_failed", mcp=is_mcp_flow))
 
         expires_at = None
         if token.get("expires_in"):
@@ -336,7 +345,7 @@ def linkedin_callback():
             if user is None:
                 # Either sign-ups are closed, or a re-connect named an account
                 # that no longer exists. Neither should look like a crash.
-                return redirect(_frontend_url("not_permitted"))
+                return redirect(_frontend_url("not_permitted", mcp=is_mcp_flow))
 
             if link_github and user.github_username != link_github:
                 # github_username is unique - a login already claimed by a
@@ -389,18 +398,18 @@ def linkedin_callback():
 
             if not user.is_active:
                 logger.info(f"Sign-in by pending account {user.id} ({user.email})")
-                return redirect(_frontend_url("pending_approval"))
+                return redirect(_frontend_url("pending_approval", mcp=is_mcp_flow))
 
             session_token = make_session_token(user.id)
             logger.info(f"✅ Signed in: {user.full_name} (id={user.id}, {user.role})")
         finally:
             db.close()
 
-        return redirect(_frontend_url("connected", token=session_token))
+        return redirect(_frontend_url("connected", token=session_token, mcp=is_mcp_flow))
 
     except requests.RequestException as e:
         logger.error(f"LinkedIn OAuth network failure: {e}")
-        return redirect(_frontend_url("network_error"))
+        return redirect(_frontend_url("network_error", mcp=is_mcp_flow))
 
 
 def _resolve_user(db, state_user_id: int, subject: str, userinfo: dict):
