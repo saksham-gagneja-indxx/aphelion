@@ -52,8 +52,8 @@ app.get("/authorize", async (c) => {
 		server: {
 			description:
 				"Lets Claude list your reels, draft LinkedIn posts, and schedule or publish them. You'll sign in on the Post Pilot website - no GitHub account needed.",
-			logo: "https://post-pilot.reel-automation-mcp.workers.dev/logo.png",
-			name: "Reel Automation",
+			logo: "https://postpilot-sandy.vercel.app/logo.png",
+			name: "Post Pilot",
 		},
 		setCookie,
 		state: { oauthReqInfo },

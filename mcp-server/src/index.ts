@@ -38,7 +38,7 @@ function errorResult(e: unknown) {
 export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 
 	server = new McpServer({
-		name: "Reel Automation",
+		name: "Post Pilot",
 		version: "1.0.0",
 		description: "LinkedIn reel automation: upload, caption, schedule, and publish videos. Use 'show_available_commands' to see what you can do.",
 	});
