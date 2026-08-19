@@ -9,6 +9,7 @@ request - it comes from the authenticated session - so one operator cannot
 publish or delete another's posts by guessing an id.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
@@ -17,6 +18,7 @@ from backend.models.audit import record as audit
 from backend.models.post import Post, PostStatus
 from backend.models.user import User
 from backend.core.publishers import UnknownPlatformError, get_publisher
+from backend.core.scheduler import get_scheduler
 from backend.utils.database import get_session
 from backend.utils.logger import get_logger
 from backend.utils.security import current_user
@@ -201,6 +203,169 @@ def delete_published(post_id: int):
 
         return jsonify({
             "message": f"Deleted from {platform}",
+            "post": post.to_dict(),
+        }), 200
+    finally:
+        db.close()
+
+
+@publish_bp.route("/<int:post_id>/delete", methods=["POST"])
+def delete_post(post_id: int):
+    """Remove a post regardless of its current status.
+
+    The single entry point a caller (MCP included) should use, instead of
+    having to know in advance whether a post is live on the platform
+    (retract), merely scheduled (cancel the job), or still a draft (nothing
+    external to undo). POSTED retracts from the real platform first, same as
+    /published above; SCHEDULED/QUEUED cancels the real APScheduler job so it
+    cannot fire; anything else just marks cancelled. Already-cancelled is a
+    409, not a silent no-op, so a repeat call doesn't read as "just deleted
+    it" when nothing happened.
+    """
+    db = get_session()
+    try:
+        post, owner, error = _load_owned_post(db, post_id)
+        if error:
+            return error
+
+        if post.status == PostStatus.CANCELLED:
+            return jsonify({"error": "This post was already deleted."}), 409
+
+        if post.status == PostStatus.POSTED:
+            platform_post_id = post.linkedin_post_id or post.instagram_post_id
+            if not platform_post_id:
+                return jsonify({
+                    "error": "Marked as posted but has no platform post id - cannot retract."
+                }), 409
+
+            platform = post.platform or "linkedin"
+            try:
+                publisher = get_publisher(owner, platform)
+            except UnknownPlatformError as e:
+                return jsonify({"error": str(e)}), 400
+
+            ok, err = publisher.delete(platform_post_id)
+            if not ok:
+                return jsonify({"error": err}), 502
+
+            post.video_url = None
+            detail = f"{platform} {platform_post_id}"
+        else:
+            if post.status in (PostStatus.SCHEDULED, PostStatus.QUEUED) and post.job_id:
+                # Runs on its own session and already marks the post
+                # cancelled; refresh to pick that up before this route's own
+                # commit below.
+                get_scheduler().cancel_post(post.id)
+                db.refresh(post)
+            detail = f"was {post.status}"
+
+        post.mark_as_cancelled()
+        audit(
+            db,
+            action="post.deleted",
+            actor=owner,
+            target=f"post:{post.id}",
+            detail=detail,
+            ip_address=request.remote_addr,
+        )
+        db.commit()
+        db.refresh(post)
+
+        return jsonify({
+            "message": "Deleted",
+            "post": post.to_dict(),
+        }), 200
+    finally:
+        db.close()
+
+
+@publish_bp.route("/<int:post_id>", methods=["PATCH"])
+def edit_post(post_id: int):
+    """Update a not-yet-published post's caption and/or scheduled time.
+
+    Refuses on a POSTED post rather than quietly updating only the local
+    row: LinkedIn's API has no endpoint to edit a live post's content, so a
+    caption change here would lie about what's actually published. Delete
+    and republish is the only real option for those.
+
+    A time change on an already-SCHEDULED post goes through cancel_post +
+    schedule_post (removing and re-adding the real APScheduler job) rather
+    than just overwriting the scheduled_time column - overwriting the column
+    alone leaves the job firing at the old time regardless of what the row
+    says.
+    """
+    db = get_session()
+    try:
+        post, owner, error = _load_owned_post(db, post_id)
+        if error:
+            return error
+
+        if post.status == PostStatus.POSTED:
+            return jsonify({
+                "error": "LinkedIn does not support editing a published post. "
+                         "Delete it and publish a new one instead."
+            }), 409
+        if post.status == PostStatus.CANCELLED:
+            return jsonify({"error": "This post was deleted and can't be edited."}), 409
+
+        data = request.get_json(silent=True) or {}
+        caption = data.get("caption")
+        scheduled_time_raw = data.get("scheduled_time")
+
+        if caption is None and scheduled_time_raw is None:
+            return jsonify({"error": "Provide caption and/or scheduled_time to update."}), 400
+
+        if caption is not None:
+            post.caption = caption
+            db.commit()
+
+        if scheduled_time_raw is not None:
+            from backend.utils.timeutil import utcnow
+
+            try:
+                new_time = datetime.fromisoformat(str(scheduled_time_raw).replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                return jsonify({"error": "Invalid scheduled_time format (use ISO 8601)."}), 400
+
+            # Every DateTime column here stores naive UTC (see
+            # backend/utils/timeutil.py) - an aware value from an offset like
+            # "Z" or "+05:30" has to be converted and stripped, not compared
+            # or stored as-is, or it either raises comparing against utcnow()
+            # or silently stores the wrong instant.
+            if new_time.tzinfo is not None:
+                new_time = new_time.astimezone(timezone.utc).replace(tzinfo=None)
+
+            if new_time <= utcnow():
+                return jsonify({"error": "scheduled_time must be in the future."}), 400
+
+            was_scheduled = post.status in (PostStatus.SCHEDULED, PostStatus.QUEUED) and post.job_id
+            if was_scheduled:
+                get_scheduler().cancel_post(post.id)
+                db.refresh(post)
+
+            job_id = get_scheduler().schedule_post(owner, post.id, new_time)
+            if job_id is None:
+                return jsonify({"error": "Failed to schedule the new time."}), 502
+            db.refresh(post)
+
+        audit(
+            db,
+            action="post.edited",
+            actor=owner,
+            target=f"post:{post.id}",
+            detail=", ".join(
+                filter(None, [
+                    "caption" if caption is not None else None,
+                    "scheduled_time" if scheduled_time_raw is not None else None,
+                ])
+            ),
+            ip_address=request.remote_addr,
+        )
+        db.commit()
+        db.refresh(post)
+
+        return jsonify({
+            "message": "Updated",
             "post": post.to_dict(),
         }), 200
     finally:

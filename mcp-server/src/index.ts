@@ -12,6 +12,8 @@ import {
 	BackendError,
 	composerTurn,
 	createPost,
+	deletePost,
+	editPost,
 	getLinkedInIdentity,
 	listReels,
 	normalizeBackendEnv,
@@ -305,7 +307,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 						aiGeneratedCaption: true,
 					});
 					const result = await publishNow(backendEnv, post.id);
-					return textResult(`${identityLine}\n\nPublished: ${result.url}`);
+					return textResult(`${identityLine}\n\nPublished: ${result.url}\nPost id: ${post.id}`);
 				} catch (e) {
 					return errorResult(e);
 				}
@@ -335,6 +337,43 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return textResult(
 						`Scheduled for ${result.post.scheduled_time}. Post id ${result.post.id}.`,
 					);
+				} catch (e) {
+					return errorResult(e);
+				}
+			},
+		);
+
+		this.server.tool(
+			"delete_reel_post",
+			"🗑️ Delete a post by its numeric id (shown after publish_reel/schedule_reel, or in list results). If it's already live on LinkedIn, this retracts it from the platform too - not just the local record. If it's still scheduled, this cancels the pending job so it won't fire. Irreversible.",
+			{
+				postId: z.number().describe("The post's numeric id, e.g. from a 'Post id: 28' line."),
+			},
+			async ({ postId }) => {
+				try {
+					const result = await deletePost(backendEnv, postId);
+					return textResult(`${result.message}. Post id ${result.post.id}, status: ${result.post.status}.`);
+				} catch (e) {
+					return errorResult(e);
+				}
+			},
+		);
+
+		this.server.tool(
+			"edit_reel_post",
+			"✏️ Edit a not-yet-published post's caption and/or scheduled time, by its numeric id. LinkedIn has no way to edit a post that's already live - this will refuse with an error for a POSTED post; delete_reel_post it and publish_reel a new one instead. Changing scheduledTime on an already-scheduled post correctly re-registers the timer, it doesn't just relabel it.",
+			{
+				postId: z.number().describe("The post's numeric id, e.g. from a 'Post id: 28' line."),
+				caption: z.string().optional().describe("New caption text, if changing it."),
+				scheduledTime: z
+					.string()
+					.optional()
+					.describe("New local datetime as YYYY-MM-DDTHH:MM, in the account's configured timezone. Must be in the future."),
+			},
+			async ({ postId, caption, scheduledTime }) => {
+				try {
+					const result = await editPost(backendEnv, postId, { caption, scheduledTime });
+					return textResult(`${result.message}. Post id ${result.post.id}, status: ${result.post.status}, scheduled_time: ${result.post.scheduled_time ?? "n/a"}.`);
 				} catch (e) {
 					return errorResult(e);
 				}
