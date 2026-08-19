@@ -61,8 +61,8 @@ gunicorn==22.0.0
 # per-user LinkedIn app credentials at rest. No Clerk SDK: the surface we need
 # is "verify a JWT against a JWKS" and "GET one user by id", both a handful of
 # lines with requests + PyJWT - not worth an extra dependency at 0.1.0.
-PyJWT==2.10.1
-cryptography==44.0.0
+PyJWT==2.13.0
+cryptography==50.0.0
 
 # ============ OPTIONAL: LEGACY INSTAGRAM ============
 # instagrapi is deliberately NOT listed. It is a reverse-engineered client that
