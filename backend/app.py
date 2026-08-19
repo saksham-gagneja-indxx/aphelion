@@ -202,12 +202,6 @@ def create_app():
     # Register blueprints
     from backend.api.routes import api_bp
     from backend.api.auth_routes import auth_bp
-    # clerk_auth_routes: unregistered, not deleted. It duplicated
-    # /api/auth/clerk/verify (backend/api/auth_routes.py's clerk_verify) with
-    # a broken verification (HMAC over a Clerk JWT that Clerk actually signs
-    # RS256), was never called by the frontend, and Clerk sign-in itself is
-    # off for now anyway (see frontend/src/api/auth.ts's CLERK_SIGNIN_ENABLED).
-    # from backend.api.clerk_auth_routes import clerk_auth_bp
     from backend.api.linkedin_routes import linkedin_bp
     from backend.api.media_routes import media_bp
     from backend.api.caption_generation_routes import caption_bp
@@ -222,7 +216,6 @@ def create_app():
     from backend.api.integrations_routes import integrations_bp
     app.register_blueprint(api_bp)
     app.register_blueprint(auth_bp)
-    # app.register_blueprint(clerk_auth_bp)  # see import comment above
     app.register_blueprint(linkedin_bp)  # LinkedIn OAuth & credentials
     app.register_blueprint(media_bp)  # Media upload & management
     app.register_blueprint(caption_bp)  # Caption generation
