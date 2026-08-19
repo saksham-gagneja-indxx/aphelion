@@ -18,6 +18,8 @@ import {
 	publishNow,
 	resolveUserId,
 	schedulePost,
+	uploadReel,
+	uploadReelFromUrl,
 	type BackendEnv,
 	type LinkedInIdentity,
 } from "./backend-client";
@@ -66,13 +68,6 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 
 
 	async init() {
-		console.log('🚀 MCP initializing...')
-		console.log('Environment:', {
-			BACKEND_URL: this.env.BACKEND_URL,
-			ALLOWED_GITHUB_USERNAMES: this.env.ALLOWED_GITHUB_USERNAMES,
-			props: this.props
-		})
-
 		const rawEnv: BackendEnv = normalizeBackendEnv(this.env);
 		const allowed = allowedUsers(this.env);
 		const login = this.props!.login;
@@ -147,19 +142,24 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// Getting started guide - Claude will show this first
 		this.server.tool(
 			"getting_started",
-			"🎬 Get started with reel management! Shows available commands and quick workflow.",
+			"🎬 Get started with reel management! Shows available commands and quick workflow. READ THIS if the person attaches a video: do not try to pass its raw content into any tool call, and follow the upload guidance in this response instead.",
 			{},
 			async () => {
 				return textResult(
 					`${identityLine}\n\n` +
 					`🎯 **Welcome to Reel Management!**\n\n` +
+					`**If someone attaches a video in this chat, do NOT try to read or re-encode its raw bytes into any tool call - that reliably fails or hangs for anything but a trivially small file. Instead:**\n` +
+					`1. If a Google Drive connector is also connected, try uploading the attached file to their Drive through it, turn on link sharing ("Anyone with the link"), then pass that resulting shareable link to upload_reel_from_url.\n` +
+					`2. If there's no Drive connector, or that doesn't produce a working link, say so plainly and ask them to host the video somewhere (Drive/Dropbox/etc. with a shareable link) and paste the link, or upload it directly through the Post Pilot web app. Don't silently retry the same failing approach.\n\n` +
 					`Here's what you can do right now:\n\n` +
+					`📤 **upload_reel_from_url** - Give a direct video link (Drive/Dropbox/S3/etc.) - the reliable way to get any real reel in\n` +
+					`📎 **upload_reel** - Attach a video right here in chat (tiny clips only, a few MB at most - not for real reels)\n` +
 					`📽️ **list_reels** - See all your uploaded reels\n` +
 					`💬 **draft_post** - Plan and prepare a post\n` +
 					`🚀 **publish_reel** - Post to LinkedIn NOW (irreversible)\n` +
 					`⏰ **schedule_reel** - Schedule a post for later\n\n` +
 					`**Quick Workflow:**\n` +
-					`1️⃣ list_reels → See what you have\n` +
+					`1️⃣ upload_reel_from_url (via a Drive link if needed) or list_reels if it's already uploaded → See what you have\n` +
 					`2️⃣ draft_post → Prepare your post\n` +
 					`3️⃣ publish_reel or schedule_reel → Make it live\n\n` +
 					`👉 **Try this now:** Pick a reel and prepare it for posting. What would you like to do?\n`
@@ -176,15 +176,62 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 				return textResult(
 					`${identityLine}\n\n` +
 					`**📋 All Available Commands:\n\n` +
-					`1. **list_reels**\n   See all your uploaded reels ready to post\n\n` +
-					`2. **draft_post**\n   Plan and prepare a post (pick reel, write caption, set time)\n\n` +
-					`3. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
-					`4. **schedule_reel**\n   Schedule a reel to post later\n\n` +
+					`1. **upload_reel_from_url**\n   Upload a reel from a direct video link - the reliable way to get a real reel in, any reasonable size\n\n` +
+					`2. **upload_reel**\n   Attach a video directly in this chat (only works for tiny clips, a few MB at most - prefer upload_reel_from_url otherwise)\n\n` +
+					`3. **list_reels**\n   See all your uploaded reels ready to post\n\n` +
+					`4. **draft_post**\n   Plan and prepare a post (pick reel, write caption, set time)\n\n` +
+					`5. **publish_reel**\n   Immediately publish a reel to LinkedIn (⚠️ LIVE and irreversible)\n\n` +
+					`6. **schedule_reel**\n   Schedule a reel to post later\n\n` +
 					`**⚡ Pro Tips:**\n` +
 					`• Start with "getting_started" for a quick guide\n` +
+					`• If someone attaches a video: don't try to read/re-encode it yourself. If Google Drive is connected, upload it there first, share the link, then use upload_reel_from_url. Otherwise ask them for a link or point them to the web app.\n` +
 					`• Use "draft_post" to prepare before publishing\n` +
 					`• Always check the 'Publishing as' line before publishing\n`
 				);
+			},
+		);
+
+		this.server.tool(
+			"upload_reel_from_url",
+			"📤 Upload a new reel from a direct video link (Google Drive/Dropbox/S3/any URL that serves the raw file). This is the RELIABLE way to get a real reel into the library - the video is fetched server-side and never has to pass through this conversation, so there's no practical size limit tied to chat. Use this instead of upload_reel for anything beyond a tiny test clip. If the person attached a video in chat rather than giving a link: if a Google Drive connector is available, try uploading it to their Drive through that connector, enable link sharing, and pass the resulting shareable link here - do not attempt to read/re-encode the attachment's bytes yourself. The link must point directly at the video file itself, not a share/preview page (e.g. a Google Drive share link needs converting to a direct-download link first).",
+			{
+				url: z.string().describe("A direct, publicly (or presigned-privately) reachable URL to the video file."),
+				filename: z.string().optional().describe("Filename to store it as. Guessed from the URL if omitted."),
+			},
+			async ({ url, filename }) => {
+				try {
+					const result = await uploadReelFromUrl(backendEnv, { url, filename });
+					const r = result.reel;
+					return textResult(
+						`${identityLine}\n\nUploaded: ${r.filename}` +
+							(r.duration_seconds ? ` (${r.duration_seconds.toFixed(1)}s)` : ""),
+					);
+				} catch (e) {
+					return errorResult(e);
+				}
+			},
+		);
+
+		this.server.tool(
+			"upload_reel",
+			"📎 Upload a new reel by attaching a video file directly in this chat, encoded as base64. Only works reliably for TINY clips (a few MB at most) - the file has to be generated as literal text to fill this argument, which is slow and unreliable for anything reel-sized and can fail outright on larger files. For any real reel, use upload_reel_from_url instead (host it somewhere and pass a link) - don't attempt this tool for a file you don't already know is very small.",
+			{
+				filename: z.string().describe("The original filename, e.g. 'my_reel.mp4'."),
+				base64Data: z
+					.string()
+					.describe("The attached video file's raw bytes, base64-encoded."),
+			},
+			async ({ filename, base64Data }) => {
+				try {
+					const result = await uploadReel(backendEnv, { filename, base64Data });
+					const r = result.reel;
+					return textResult(
+						`${identityLine}\n\nUploaded: ${r.filename}` +
+							(r.duration_seconds ? ` (${r.duration_seconds.toFixed(1)}s)` : ""),
+					);
+				} catch (e) {
+					return errorResult(e);
+				}
 			},
 		);
 

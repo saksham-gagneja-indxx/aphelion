@@ -130,6 +130,184 @@ export const listReels = (env: BackendEnv) =>
 		`/api/users/${env.BACKEND_USER_ID}/reels`,
 	);
 
+/**
+ * Cap on the DECODED size of an upload_reel attachment.
+ *
+ * Base64 has no way through this tool but as a plain string argument in the
+ * tool call, which means it rides through the same context/payload budget as
+ * everything else in the conversation - there is no separate binary channel.
+ * 20MB decoded (~27MB of base64 text) is picked as a "short vertical clip"
+ * ceiling, not a hard platform limit: it is comfortably clear of practical
+ * tool-call size trouble while still fitting a real reel, not just a
+ * few-second test clip.
+ */
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+function base64ToBytes(base64: string): Uint8Array {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
+}
+
+export interface UploadedReel {
+	filename: string;
+	path: string;
+	duration_seconds: number | null;
+	size_bytes: number;
+}
+
+/**
+ * Upload a reel whose bytes arrived as a base64 tool argument - i.e. a file
+ * attached directly in the chat, rather than one already sitting in the
+ * user's reel library via the web app's own upload page (untouched by this:
+ * it POSTs to the exact same /api/upload the web app uses).
+ */
+export async function uploadReel(
+	env: BackendEnv,
+	input: { filename: string; base64Data: string },
+): Promise<{ success: true; message: string; reel: UploadedReel }> {
+	// Roughly 4/3 expansion; checking the encoded string's length avoids
+	// decoding a huge blob just to reject it.
+	const approxBytes = (input.base64Data.length * 3) / 4;
+	if (approxBytes > MAX_UPLOAD_BYTES) {
+		throw new BackendError(
+			`That file is too large to attach directly (~${Math.round(approxBytes / 1024 / 1024)}MB, ` +
+				`limit is ${MAX_UPLOAD_BYTES / 1024 / 1024}MB). Trim the clip or upload it from the web app instead.`,
+			413,
+		);
+	}
+
+	let bytes: Uint8Array;
+	try {
+		bytes = base64ToBytes(input.base64Data);
+	} catch {
+		throw new BackendError("Could not decode the attached file - it was not valid base64.", 400);
+	}
+
+	const form = new FormData();
+	form.append("user_id", env.BACKEND_USER_ID);
+	form.append("file", new Blob([bytes], { type: "video/mp4" }), input.filename);
+
+	const res = await fetch(`${env.BACKEND_API_URL}/api/upload`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${env.BACKEND_API_KEY}` },
+		body: form,
+	});
+
+	const text = await res.text();
+	let json: any = null;
+	try {
+		json = text ? JSON.parse(text) : null;
+	} catch {
+		// non-JSON body, handled below via res.ok
+	}
+
+	if (!res.ok) {
+		const message = json?.error || `Upload failed (${res.status})`;
+		throw new BackendError(message, res.status);
+	}
+	return json;
+}
+
+/**
+ * Cap for a URL-sourced upload. Much higher than the base64 tool's cap
+ * because nothing here rides through model-generated text or the
+ * conversation's token budget - the Worker fetches the bytes directly and
+ * streams them to the backend. The real ceiling is Workers' own memory
+ * limit, not anything token-related; 100MB is comfortably under that while
+ * covering any real reel.
+ */
+const MAX_URL_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+function filenameFromUrl(url: string): string {
+	try {
+		const path = new URL(url).pathname;
+		const last = path.split("/").filter(Boolean).pop();
+		if (last && /\.[a-z0-9]{2,4}$/i.test(last)) return last;
+	} catch {
+		// fall through to the default below
+	}
+	return "reel.mp4";
+}
+
+/**
+ * Upload a reel by having the Worker fetch it server-side from a direct,
+ * publicly (or presigned-privately) reachable URL - the counterpart to
+ * uploadReel() for files too large to pass through as base64. The model
+ * never sees or generates the binary content; it only ever handles a URL
+ * string, so there is no context/tool-call size limit tied to the video's
+ * size, only this function's own byte cap.
+ */
+export async function uploadReelFromUrl(
+	env: BackendEnv,
+	input: { url: string; filename?: string },
+): Promise<{ success: true; message: string; reel: UploadedReel }> {
+	let sourceRes: Response;
+	try {
+		sourceRes = await fetch(input.url);
+	} catch (e) {
+		throw new BackendError(
+			`Could not fetch that URL: ${e instanceof Error ? e.message : String(e)}`,
+			400,
+		);
+	}
+
+	if (!sourceRes.ok) {
+		throw new BackendError(
+			`That URL returned HTTP ${sourceRes.status}. It needs to be a direct link to the video ` +
+				`file itself (not a share/preview page) and publicly reachable without login.`,
+			400,
+		);
+	}
+
+	const declaredLength = sourceRes.headers.get("content-length");
+	if (declaredLength && Number(declaredLength) > MAX_URL_UPLOAD_BYTES) {
+		throw new BackendError(
+			`That file is too large (~${Math.round(Number(declaredLength) / 1024 / 1024)}MB, ` +
+				`limit is ${MAX_URL_UPLOAD_BYTES / 1024 / 1024}MB).`,
+			413,
+		);
+	}
+
+	const blob = await sourceRes.blob();
+	if (blob.size > MAX_URL_UPLOAD_BYTES) {
+		throw new BackendError(
+			`That file is too large (~${Math.round(blob.size / 1024 / 1024)}MB, ` +
+				`limit is ${MAX_URL_UPLOAD_BYTES / 1024 / 1024}MB).`,
+			413,
+		);
+	}
+
+	const filename = input.filename || filenameFromUrl(input.url);
+
+	const form = new FormData();
+	form.append("user_id", env.BACKEND_USER_ID);
+	form.append("file", blob, filename);
+
+	const res = await fetch(`${env.BACKEND_API_URL}/api/upload`, {
+		method: "POST",
+		headers: { Authorization: `Bearer ${env.BACKEND_API_KEY}` },
+		body: form,
+	});
+
+	const text = await res.text();
+	let json: any = null;
+	try {
+		json = text ? JSON.parse(text) : null;
+	} catch {
+		// non-JSON body, handled below via res.ok
+	}
+
+	if (!res.ok) {
+		const message = json?.error || `Upload failed (${res.status})`;
+		throw new BackendError(message, res.status);
+	}
+	return json;
+}
+
 export interface LinkedInIdentity {
 	connected: boolean;
 	email: string | null;

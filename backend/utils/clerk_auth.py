@@ -1,234 +1,197 @@
 """
 Clerk authentication integration.
-Handles JWT verification and user session management.
+
+Verifies Clerk session JWTs against Clerk's own JWKS - not by trusting
+whatever the caller claims a token's decoded claims are. Signature
+verification is not optional here: skipping it (as an earlier version of
+this module did, decoding with verify_signature=False on the theory that
+"the frontend Clerk SDK already verified it") means anyone can POST a
+structurally valid JWT with an arbitrary `sub` claim and be handed a
+session for that Clerk account, including someone else's. The frontend SDK
+verifying a token tells the frontend it's real; it tells this server
+nothing, because nothing stops a caller from skipping the frontend
+entirely and hitting this endpoint directly.
+
+Note: verify_session_token here verifies an incoming CLERK token and
+returns the clerk_id it names - a different job from
+backend.utils.security.verify_session_token, which verifies THIS APP'S
+OWN previously-issued session token and returns a user_id. The two are
+unrelated functions that happen to share a name because each verifies
+"the token in this request," for a different meaning of "this".
 """
 
-import os
+import base64
+from typing import Optional, Dict, Any, Tuple
+
 import jwt
-import json
 import requests
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from jwt import PyJWKClient
+
 from backend.utils.logger import get_logger
 
 logger = get_logger("clerk_auth")
 
-CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY")
 CLERK_API_ENDPOINT = "https://api.clerk.com/v1"
 
+# Keyed by Frontend API domain. PyJWKClient itself caches the fetched keys,
+# so this just avoids re-creating a client (and re-fetching the JWKS) on
+# every single request.
+_jwks_clients: Dict[str, PyJWKClient] = {}
 
-def verify_clerk_token(token: str) -> Optional[Dict[str, Any]]:
+
+def _frontend_api_domain() -> Optional[str]:
+    """Recover the Clerk Frontend API domain from the publishable key.
+
+    A Clerk publishable key is `pk_{env}_{base64(domain + "$")}` - decoding
+    the base64 segment and dropping the trailing "$" gives the exact host
+    that serves this instance's JWKS, with no separate config value that
+    could drift out of sync with the real key.
     """
-    Verify Clerk JWT token. For dev: decode without verification (Clerk SDK handles it).
+    from backend.utils.config import get_settings
 
-    Args:
-        token: JWT token from Clerk
+    key = get_settings().clerk_publishable_key
+    if not key or "_" not in key:
+        return None
+    try:
+        encoded = key.rsplit("_", 1)[-1]
+        padded = encoded + "=" * (-len(encoded) % 4)
+        return base64.b64decode(padded).decode().rstrip("$")
+    except Exception:
+        return None
 
-    Returns:
-        Decoded token claims or None if invalid
+
+def _jwks_client() -> Optional[PyJWKClient]:
+    domain = _frontend_api_domain()
+    if not domain:
+        return None
+    if domain not in _jwks_clients:
+        _jwks_clients[domain] = PyJWKClient(f"https://{domain}/.well-known/jwks.json")
+    return _jwks_clients[domain]
+
+
+def verify_session_token(token: str) -> Optional[str]:
+    """Verify a Clerk-issued JWT's signature against Clerk's real JWKS.
+
+    Returns the verified `sub` claim (the Clerk user id) only if the
+    signature genuinely checks out against a public key Clerk itself
+    published for this token's `kid`. Anything else - wrong key, expired
+    token, malformed JWT, no publishable key configured to even locate the
+    JWKS - returns None.
     """
     if not token:
         return None
 
-    try:
-        # Remove "Bearer " prefix if present
-        if token.startswith("Bearer "):
-            token = token[7:]
+    if token.startswith("Bearer "):
+        token = token[7:]
 
-        # For development: decode and validate basic structure
-        # Production should verify with Clerk's JWKS, but for now we trust
-        # that the frontend Clerk SDK has already verified the token
+    jwks_client = _jwks_client()
+    if jwks_client is None:
+        logger.error("Cannot verify Clerk token: VITE_CLERK_PUBLISHABLE_KEY is not configured")
+        return None
+
+    try:
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
         decoded = jwt.decode(
             token,
-            options={"verify_signature": False}  # Skip signature (verified by Clerk SDK)
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_aud": False},
         )
-
-        # Validate required claims
-        if not decoded.get("sub"):
-            logger.warning("No 'sub' claim in Clerk token")
-            return None
-
-        logger.info(f"Clerk token decoded for user: {decoded.get('sub')}")
-        return decoded
-
     except jwt.ExpiredSignatureError:
         logger.warning("Clerk token expired")
         return None
-    except jwt.InvalidTokenError as e:
-        logger.warning(f"Invalid Clerk token: {e}")
-        return None
     except Exception as e:
-        logger.error(f"Clerk token verification failed: {e}")
+        # Covers PyJWKClientError (unknown kid), InvalidSignatureError (the
+        # forged-token case), and anything else - all of these mean "this
+        # token did not verify," not "something crashed."
+        logger.warning(f"Clerk token verification failed: {e}")
         return None
 
+    clerk_id = decoded.get("sub")
+    if not clerk_id:
+        logger.warning("No 'sub' claim in Clerk token")
+        return None
 
-def get_clerk_user(user_id: str) -> Optional[Dict[str, Any]]:
+    logger.info(f"Clerk token verified for user: {clerk_id}")
+    return clerk_id
+
+
+def fetch_user_profile(clerk_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch a user's profile from Clerk's Backend API.
+
+    Returns the flat shape the rest of the sign-in path expects: email,
+    name, avatar_url, public_metadata. None on any failure - a verified
+    token whose profile can't be fetched is treated as a failed sign-in,
+    not as a session with holes in it.
     """
-    Get user details from Clerk API.
+    from backend.utils.config import get_settings
 
-    Args:
-        user_id: Clerk user ID (from token 'sub' claim)
-
-    Returns:
-        User details or None if not found
-    """
-    if not CLERK_SECRET_KEY:
+    secret_key = get_settings().clerk_secret_key
+    if not secret_key:
         logger.error("CLERK_SECRET_KEY not configured")
         return None
 
     try:
-        headers = {
-            "Authorization": f"Bearer {CLERK_SECRET_KEY}",
-            "Content-Type": "application/json",
-        }
-
         response = requests.get(
-            f"{CLERK_API_ENDPOINT}/users/{user_id}",
-            headers=headers,
-            timeout=5
+            f"{CLERK_API_ENDPOINT}/users/{clerk_id}",
+            headers={
+                "Authorization": f"Bearer {secret_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=5,
         )
-
-        if response.status_code == 200:
-            user = response.json()
-            logger.info(f"Retrieved Clerk user: {user_id}")
-            return user
-        else:
-            logger.warning(f"Failed to get Clerk user {user_id}: {response.status_code}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Clerk API error: {e}")
+    except requests.RequestException as e:
+        logger.error(f"Clerk API error fetching user {clerk_id}: {e}")
         return None
 
+    if response.status_code != 200:
+        logger.warning(f"Failed to fetch Clerk user {clerk_id}: {response.status_code}")
+        return None
 
-def extract_user_info(clerk_user: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extract relevant user info from Clerk user object.
+    clerk_user = response.json()
 
-    Args:
-        clerk_user: User object from Clerk API
-
-    Returns:
-        Extracted user info
-    """
     primary_email = next(
-        (email["email_address"] for email in clerk_user.get("email_addresses", [])
-         if email.get("primary")),
-        None
+        (
+            e["email_address"]
+            for e in clerk_user.get("email_addresses", [])
+            if e.get("id") == clerk_user.get("primary_email_address_id")
+        ),
+        None,
     )
-
-    primary_phone = next(
-        (phone["phone_number"] for phone in clerk_user.get("phone_numbers", [])
-         if phone.get("primary")),
-        None
+    full_name = (
+        f"{clerk_user.get('first_name') or ''} {clerk_user.get('last_name') or ''}".strip()
+        or clerk_user.get("username")
+        or None
     )
 
     return {
-        "clerk_id": clerk_user.get("id"),
         "email": primary_email,
-        "phone": primary_phone,
-        "first_name": clerk_user.get("first_name"),
-        "last_name": clerk_user.get("last_name"),
-        "full_name": f"{clerk_user.get('first_name') or ''} {clerk_user.get('last_name') or ''}".strip(),
-        "avatar_url": clerk_user.get("profile_image_url"),
-        "username": clerk_user.get("username"),
-        "created_at": clerk_user.get("created_at"),
+        "name": full_name,
+        "avatar_url": clerk_user.get("image_url") or clerk_user.get("profile_image_url"),
+        "public_metadata": clerk_user.get("public_metadata") or {},
     }
-
-
-def create_session_token(user_id: int, clerk_id: str) -> str:
-    """
-    Create a session token for authenticated user.
-
-    Args:
-        user_id: Database user ID
-        clerk_id: Clerk user ID
-
-    Returns:
-        JWT session token
-    """
-    if not os.getenv("SECRET_KEY"):
-        raise ValueError("SECRET_KEY not configured")
-
-    payload = {
-        "user_id": user_id,
-        "clerk_id": clerk_id,
-        "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(hours=24),
-    }
-
-    token = jwt.encode(
-        payload,
-        os.getenv("SECRET_KEY"),
-        algorithm="HS256"
-    )
-
-    logger.info(f"Session token created for user {user_id}")
-    return token
-
-
-def verify_session_token(token: str) -> Optional[Dict[str, Any]]:
-    """
-    Verify application session token.
-
-    Args:
-        token: Session token
-
-    Returns:
-        Decoded token claims or None if invalid
-    """
-    if not os.getenv("SECRET_KEY"):
-        logger.error("SECRET_KEY not configured")
-        return None
-
-    try:
-        decoded = jwt.decode(
-            token,
-            os.getenv("SECRET_KEY"),
-            algorithms=["HS256"]
-        )
-        return decoded
-
-    except jwt.ExpiredSignatureError:
-        logger.warning("Session token expired")
-        return None
-    except jwt.InvalidTokenError:
-        logger.warning("Invalid session token")
-        return None
-    except Exception as e:
-        logger.error(f"Session token verification failed: {e}")
-        return None
 
 
 class ClerkVerificationError(Exception):
     """Raised when Clerk token verification fails."""
+
     pass
 
 
-def verify_and_fetch(token: str) -> tuple[str, Dict[str, Any]]:
+def verify_and_fetch(token: str) -> Tuple[str, Dict[str, Any]]:
+    """Verify a Clerk JWT and fetch the profile behind it.
+
+    Returns (clerk_id, profile). Raises ClerkVerificationError for any
+    failure - invalid signature, missing claim, or a profile fetch that
+    didn't succeed - so callers have one exception to catch rather than
+    several None-checks to get right.
     """
-    Verify Clerk JWT token and fetch user profile from Clerk API.
-
-    Args:
-        token: Clerk JWT token
-
-    Returns:
-        Tuple of (clerk_id, profile_dict)
-
-    Raises:
-        ClerkVerificationError: If token is invalid or fetch fails
-    """
-    decoded = verify_clerk_token(token)
-    if not decoded:
+    clerk_id = verify_session_token(token)
+    if not clerk_id:
         raise ClerkVerificationError("Token verification failed")
 
-    clerk_id = decoded.get("sub")
-    if not clerk_id:
-        raise ClerkVerificationError("No clerk ID in token")
-
-    clerk_user = get_clerk_user(clerk_id)
-    if not clerk_user:
+    profile = fetch_user_profile(clerk_id)
+    if not profile:
         raise ClerkVerificationError("Could not fetch user profile from Clerk")
 
-    profile = extract_user_info(clerk_user)
     return clerk_id, profile
