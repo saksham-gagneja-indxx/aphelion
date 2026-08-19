@@ -12,6 +12,7 @@ declare namespace Cloudflare {
 		BACKEND_API_KEY: string;
 		BACKEND_USER_ID: string;
 		ALLOWED_GITHUB_USERNAMES: string;
+		WEBSITE_URL: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

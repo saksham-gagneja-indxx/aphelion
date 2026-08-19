@@ -344,17 +344,28 @@ def verify_session_token(token: Optional[str]) -> Optional[int]:
     return uid if isinstance(uid, int) else None
 
 
-def make_oauth_state(user_id: int, link_github: Optional[str] = None) -> str:
+def make_oauth_state(
+    user_id: int, link_github: Optional[str] = None, next: Optional[str] = None
+) -> str:
     """Mint a signed, expiring state value bound to `user_id`.
 
     `link_github` rides along for the MCP self-serve flow (see
     /api/mcp/link-start): a GitHub login that was already verified by the
     Worker's own GitHub OAuth, carried through LinkedIn's redirect so the
     callback can set User.github_username the moment identity is proven on
-    both sides - no admin_cli step required. It has nothing to do with which
-    account owns the state (still `user_id`, still LOGIN_USER_ID for a plain
-    sign-in) - it is just extra freight the signature also covers, so it
-    cannot be swapped for a different login in transit.
+    both sides - no admin_cli step required.
+
+    `next` is a path+query on the frontend (e.g. "/mcp-authorize?state=...")
+    to land on instead of the normal dashboard - used by the MCP connector
+    flow's /mcp-authorize page, which needs LinkedIn sign-in to return to
+    itself rather than to "/" so it can finish handing control back to the
+    Worker. Only ever a same-origin frontend path, never an external URL -
+    see linkedin_callback's use of it.
+
+    Neither field has anything to do with which account owns the state
+    (still `user_id`, still LOGIN_USER_ID for a plain sign-in) - they are
+    just extra freight the signature also covers, so they cannot be swapped
+    for something else in transit.
     """
     payload = {
         "user_id": user_id,
@@ -365,48 +376,118 @@ def make_oauth_state(user_id: int, link_github: Optional[str] = None) -> str:
     }
     if link_github:
         payload["link_github"] = link_github
+    if next:
+        payload["next"] = next
 
     encoded_payload = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
     return f"{_b64encode(encoded_payload)}.{_sign(encoded_payload)}"
 
 
-def verify_oauth_state(state: Optional[str]) -> Tuple[Optional[int], str, Optional[str]]:
-    """Validate a state value. Returns (user_id, error_message, link_github).
+def verify_oauth_state(
+    state: Optional[str],
+) -> Tuple[Optional[int], str, Optional[str], Optional[str]]:
+    """Validate a state value. Returns (user_id, error_message, link_github, next).
 
     user_id is None when validation fails. The error message is for logs, not
-    for the user - it can describe why a token was rejected. link_github is
-    the GitHub login to map on success, if this state carries one (see
-    make_oauth_state), else None.
+    for the user - it can describe why a token was rejected. link_github and
+    next are whatever make_oauth_state was called with, or None.
     """
     if not state or "." not in state:
-        return None, "missing or malformed state", None
+        return None, "missing or malformed state", None, None
 
     encoded, signature = state.rsplit(".", 1)
 
     try:
         payload = _b64decode(encoded)
     except Exception:
-        return None, "state is not decodable", None
+        return None, "state is not decodable", None, None
 
     # Verify BEFORE parsing: never act on unauthenticated data.
     if not hmac.compare_digest(_sign(payload), signature):
-        return None, "state signature does not verify", None
+        return None, "state signature does not verify", None, None
 
     try:
         data = json.loads(payload)
     except ValueError:
-        return None, "state payload is not valid JSON", None
+        return None, "state payload is not valid JSON", None, None
 
     if int(data.get("exp", 0)) < int(time.time()):
-        return None, "state has expired", None
+        return None, "state has expired", None, None
 
     user_id = data.get("user_id")
     if not isinstance(user_id, int):
-        return None, "state carries no valid user_id", None
+        return None, "state carries no valid user_id", None, None
 
     link_github = data.get("link_github")
     if link_github is not None and not isinstance(link_github, str):
         link_github = None
 
-    return user_id, "", link_github
+    next_path = data.get("next")
+    if next_path is not None and not isinstance(next_path, str):
+        next_path = None
+
+    return user_id, "", link_github, next_path
+
+
+# Short-lived: this only has to survive one redirect (website -> Worker
+# callback), not a human filling in a form, unlike STATE_TTL_SECONDS above.
+MCP_GRANT_TTL_SECONDS = 120
+
+
+def make_mcp_connector_grant(user_id: int, worker_state: str) -> str:
+    """Mint a short-lived, signed proof that `user_id` (already signed into
+    the website) approved connecting the MCP connector attempt identified by
+    `worker_state`.
+
+    This is the credential that lets the Cloudflare Worker's own OAuth
+    handshake finish WITHOUT the person ever seeing a GitHub (or any
+    third-party) consent screen: the Worker sends them to the website, the
+    website is what actually authenticates them (Clerk / LinkedIn, whatever
+    it already supports), and this grant is the website's way of handing
+    that identity back across the redirect. Binding it to `worker_state`
+    (not just user_id) stops a grant minted for one connector attempt being
+    replayed against a different one.
+    """
+    payload = json.dumps(
+        {
+            "user_id": user_id,
+            "worker_state": worker_state,
+            "exp": int(time.time()) + MCP_GRANT_TTL_SECONDS,
+            "nonce": secrets.token_urlsafe(16),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"{_b64encode(payload)}.{_sign(payload)}"
+
+
+def verify_mcp_connector_grant(grant: Optional[str], worker_state: str) -> Optional[int]:
+    """Validate a grant minted by make_mcp_connector_grant. Returns the
+    user_id it was issued for, or None if it does not verify, has expired,
+    or was minted for a different worker_state."""
+    if not grant or "." not in grant:
+        return None
+
+    encoded, signature = grant.rsplit(".", 1)
+    try:
+        payload = _b64decode(encoded)
+    except Exception:
+        return None
+
+    if not hmac.compare_digest(_sign(payload), signature):
+        return None
+
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return None
+
+    if int(data.get("exp", 0)) < int(time.time()):
+        return None
+
+    if data.get("worker_state") != worker_state:
+        return None
+
+    user_id = data.get("user_id")
+    return user_id if isinstance(user_id, int) else None

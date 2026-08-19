@@ -10,11 +10,17 @@ if (typeof window !== 'undefined' && window.location.hash.includes('token=')) {
     localStorage.setItem('smm.session', match[1])
     window.history.replaceState(null, '', window.location.pathname + window.location.search)
 
+    // /mcp-authorize reaches this same intermediate state mid-flow (after
+    // connecting LinkedIn, before handing a grant back to the Worker) - it
+    // must stay open to finish that handoff, not close itself here just
+    // because a token showed up in the fragment.
+    const isMcpAuthorize = window.location.pathname === '/mcp-authorize'
+
     // When the consent flow ran in a tab we opened, hand back to the opener
     // rather than leaving a second copy of the app running. localStorage is
     // shared across same-origin tabs, so the token written above is already
     // visible there; the opener picks it up from the 'storage' event.
-    if (window.opener && window.opener !== window) {
+    if (!isMcpAuthorize && window.opener && window.opener !== window) {
       window.close()
     }
   }
@@ -238,11 +244,29 @@ export function linkedInLoginUrl(): string {
  * Fetched rather than navigated to: /start requires a bearer token, so
  * pointing the browser at it directly just returns 401.
  */
-export async function getLinkedInAuthorizeUrl(): Promise<string> {
-  const res = await apiFetch('/api/auth/linkedin/start?format=json')
+export async function getLinkedInAuthorizeUrl(next?: string): Promise<string> {
+  const query = next ? `&next=${encodeURIComponent(next)}` : ''
+  const res = await apiFetch(`/api/auth/linkedin/start?format=json${query}`)
   if (!res.ok) throw await toError(res)
   const body = (await res.json()) as { url: string }
   return body.url
+}
+
+/**
+ * Approve one MCP connector authorization attempt as the signed-in user -
+ * the last step of /mcp-authorize (see backend/api/auth_routes.py's
+ * mcp_authorize_connector). Returns a short-lived grant the caller redirects
+ * straight to the Worker's own callback with.
+ */
+export async function authorizeMcpConnector(workerState: string): Promise<string> {
+  const res = await apiFetch('/api/mcp/authorize-connector', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ worker_state: workerState }),
+  })
+  if (!res.ok) throw await toError(res)
+  const body = (await res.json()) as { grant: string }
+  return body.grant
 }
 
 /**

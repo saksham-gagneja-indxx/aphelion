@@ -24,6 +24,7 @@ import Setup from './pages/Setup'
 import Admin from './pages/Admin'
 import Console from './pages/Console'
 import McpConnected from './pages/McpConnected'
+import McpAuthorize from './pages/McpAuthorize'
 import { BANNER_DANGER, BTN_OUTLINE } from './ui'
 
 /**
@@ -369,6 +370,18 @@ export default function App() {
     return (
       <Routes>
         <Route path="/mcp-connected" element={<McpConnected />} />
+      </Routes>
+    )
+  }
+
+  // The MCP connector's own authorization landing page (see
+  // mcp-server/src/site-handler.ts) - same reasoning as /mcp-connected above:
+  // renders before the /api/me check since it drives its own sign-in state
+  // rather than assuming one already exists.
+  if (window.location.pathname === '/mcp-authorize') {
+    return (
+      <Routes>
+        <Route path="/mcp-authorize" element={<McpAuthorize />} />
       </Routes>
     )
   }
