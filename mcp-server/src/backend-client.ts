@@ -6,83 +6,16 @@
  * every route that takes an explicit user_id (see backend/utils/security.py,
  * require_user_access).
  *
- * BACKEND_USER_ID in a BackendEnv is resolved PER SESSION, not read as a
- * fixed secret - see resolveUserId() and index.ts's init(), which looks up
- * the signed-in GitHub login against /api/users/by-github/<login> and builds
- * a BackendEnv carrying whichever account that login is mapped to. Multiple
- * people can use the same deployed connector, each acting as their own
- * backend account, rather than every GitHub sign-in acting as one hardcoded
- * user. ALLOWED_GITHUB_USERNAMES (see index.ts) is a separate, independent
- * gate on top of this - a GitHub login must both be allowlisted AND mapped
- * to an active account to get real tools instead of the not_authorized one.
+ * BACKEND_USER_ID in a BackendEnv is resolved PER SESSION from this.props.userId
+ * (see index.ts's init()), which site-handler.ts's OAuth callback already
+ * resolved via /api/mcp/verify-connector-grant before the session could even
+ * exist - there is no separate identity-to-account lookup left to do here.
  */
 
 export interface BackendEnv {
 	BACKEND_API_URL: string;
 	BACKEND_API_KEY: string;
 	BACKEND_USER_ID: string;
-}
-
-export interface ResolvedUser {
-	id: number;
-	name: string | null;
-	role: string;
-}
-
-/**
- * Look up which backend account a GitHub login acts as.
- *
- * Returns null for "no mapping" or "account inactive" alike - deliberately
- * not distinguished to the MCP caller, same as the backend route itself
- * folds both into one 404 (see routes.py's user_by_github): a deactivated
- * account should look exactly like an unmapped one, not leak that it once
- * existed.
- */
-export async function resolveUserId(
-	env: Pick<BackendEnv, "BACKEND_API_URL" | "BACKEND_API_KEY">,
-	githubLogin: string,
-): Promise<ResolvedUser | null> {
-	const res = await fetch(
-		`${env.BACKEND_API_URL}/api/users/by-github/${encodeURIComponent(githubLogin)}`,
-		{ headers: { Authorization: `Bearer ${env.BACKEND_API_KEY}` } },
-	);
-	if (res.status === 404) return null;
-	if (!res.ok) {
-		throw new BackendError(`Could not resolve GitHub identity (${res.status}).`, res.status);
-	}
-	return (await res.json()) as ResolvedUser;
-}
-
-/**
- * Begin self-serve onboarding for a GitHub login with no backend account
- * mapped yet. The backend hands back a LinkedIn sign-in URL that will, on
- * success, map this exact GitHub login to whichever account signs in -
- * automatically, no admin_cli step. See backend/api/auth_routes.py's
- * mcp_link_start.
- */
-export async function linkGithubStart(
-	env: Pick<BackendEnv, "BACKEND_API_URL" | "BACKEND_API_KEY">,
-	githubUsername: string,
-): Promise<{ url: string }> {
-	const res = await fetch(`${env.BACKEND_API_URL}/api/mcp/link-start`, {
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${env.BACKEND_API_KEY}`,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify({ github_username: githubUsername }),
-	});
-	if (!res.ok) {
-		let message = `Could not start LinkedIn sign-in (${res.status}).`;
-		try {
-			const json = (await res.json()) as any;
-			if (json?.error) message = json.error;
-		} catch {
-			// non-JSON body, keep the generic message
-		}
-		throw new BackendError(message, res.status);
-	}
-	return (await res.json()) as { url: string };
 }
 
 export class BackendError extends Error {
