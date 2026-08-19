@@ -19,6 +19,7 @@ from backend.utils.security import current_user
 from backend.utils.encryption import encrypt_token, decrypt_token
 from backend.utils.config import get_settings
 from datetime import datetime, timedelta
+from urllib.parse import quote
 import requests
 import secrets
 import logging
@@ -211,7 +212,8 @@ def linkedin_oauth_callback_get():
 
     # Redirect to frontend with code and state so it can POST to /callback
     return redirect(
-        f"{get_settings().frontend_url}/?linkedin=authorize&code={code}&state={state}"
+        f"{get_settings().frontend_url}/?linkedin=authorize"
+        f"&code={quote(code)}&state={quote(state)}"
     )
 
 

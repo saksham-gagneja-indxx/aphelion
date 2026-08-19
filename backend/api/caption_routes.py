@@ -99,7 +99,7 @@ def suggest():
         return jsonify({"error": e.message}), e.status
     except Exception as e:
         logger.exception("Caption generation failed")
-        return jsonify({"error": f"Caption generation failed: {e}"}), 500
+        return jsonify({"error": "Caption generation failed"}), 500
     finally:
         if db is not None:
             db.close()

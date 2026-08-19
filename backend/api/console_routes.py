@@ -78,7 +78,8 @@ def overview():
 
         scheduler_state.update(get_scheduler().get_jobs_count())
     except Exception as e:  # pragma: no cover - defensive
-        scheduler_state["error"] = str(e)
+        logger.warning(f"Scheduler status check failed: {e}")
+        scheduler_state["error"] = "Scheduler status unavailable"
 
     # ---- storage ---------------------------------------------------------
     reels_path = Path(settings.reels_folder)

@@ -77,7 +77,7 @@ def turn():
         return jsonify({"error": e.message}), e.status
     except Exception as e:
         logger.exception("Composer turn failed")
-        return jsonify({"error": f"Composer failed: {e}"}), 500
+        return jsonify({"error": "Composer failed"}), 500
     finally:
         if db is not None:
             db.close()

@@ -19,6 +19,8 @@ jobs:
   test:
     name: Test MCP Server
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +52,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/mcp-deployment' || github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +110,8 @@ jobs:
     name: Build Documentation
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 

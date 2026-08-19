@@ -240,7 +240,8 @@ def backfill_linkedin_sub(user_id: int):
                 timeout=30,
             )
         except requests.RequestException as e:
-            return jsonify({"error": f"Could not reach LinkedIn: {e}"}), 502
+            logger.warning(f"Could not reach LinkedIn userinfo endpoint: {e}")
+            return jsonify({"error": "Could not reach LinkedIn"}), 502
 
         if resp.status_code >= 400:
             return jsonify({

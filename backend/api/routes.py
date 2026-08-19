@@ -131,7 +131,7 @@ def create_user():
 
     except Exception as e:
         logger.error(f"Error creating user: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/<int:user_id>", methods=["GET"])
@@ -155,7 +155,7 @@ def get_user(user_id):
 
     except Exception as e:
         logger.error(f"Error getting user: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/by-github/<github_username>", methods=["GET"])
@@ -238,7 +238,7 @@ def authenticate_user(user_id):
 
     except Exception as e:
         logger.error(f"Error authenticating user: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ============ POST/REEL ENDPOINTS ============
@@ -322,7 +322,7 @@ def create_post():
 
     except Exception as e:
         logger.error(f"Error creating post: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/posts/<int:post_id>", methods=["GET"])
@@ -347,7 +347,7 @@ def get_post(post_id):
 
     except Exception as e:
         logger.error(f"Error getting post: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/posts/<int:post_id>/schedule", methods=["POST"])
@@ -425,7 +425,7 @@ def schedule_post(post_id):
 
     except Exception as e:
         logger.error(f"Error scheduling post: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/posts/<int:post_id>/schedule-optimal", methods=["POST"])
@@ -474,7 +474,7 @@ def schedule_post_optimal(post_id):
 
     except Exception as e:
         logger.error(f"Error scheduling optimal post: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/posts/<int:post_id>", methods=["DELETE"])
@@ -506,7 +506,7 @@ def cancel_post(post_id):
 
     except Exception as e:
         logger.error(f"Error cancelling post: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/posts/<int:post_id>/delete", methods=["DELETE"])
@@ -585,7 +585,7 @@ def get_user_posts(user_id):
 
     except Exception as e:
         logger.error(f"Error getting user posts: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ============ UPLOAD ENDPOINTS ============
@@ -651,7 +651,7 @@ def upload_reel():
         raise
     except Exception as e:
         logger.error(f"Error uploading reel: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/<int:user_id>/reels", methods=["GET"])
@@ -674,7 +674,7 @@ def get_user_reels(user_id):
 
     except Exception as e:
         logger.error(f"Error getting user reels: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/<int:user_id>/reels/<path:filename>", methods=["DELETE"])
@@ -733,7 +733,7 @@ def delete_reel(user_id, filename):
 
     except Exception as e:
         logger.error(f"Error deleting reel: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/<int:user_id>/reels/<path:filename>/thumbnail", methods=["GET"])
@@ -756,7 +756,7 @@ def get_reel_thumbnail(user_id, filename):
 
     except Exception as e:
         logger.error(f"Error serving thumbnail: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ============ ANALYTICS ENDPOINTS ============
@@ -789,7 +789,7 @@ def get_user_analytics(user_id):
 
     except Exception as e:
         logger.error(f"Error getting analytics: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/<int:user_id>/analyze", methods=["POST"])
@@ -842,7 +842,7 @@ def analyze_engagement(user_id):
 
     except Exception as e:
         logger.error(f"Error analyzing engagement: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/users/<int:user_id>/optimal-time", methods=["GET"])
@@ -873,7 +873,7 @@ def get_optimal_time(user_id):
 
     except Exception as e:
         logger.error(f"Error getting optimal time: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ============ SCHEDULER ENDPOINTS ============
@@ -889,7 +889,7 @@ def scheduler_status():
 
     except Exception as e:
         logger.error(f"Error getting scheduler status: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/scheduler/jobs", methods=["GET"])
@@ -910,7 +910,7 @@ def get_scheduled_jobs():
 
     except Exception as e:
         logger.error(f"Error getting scheduled jobs: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/scheduler/pending", methods=["GET"])
@@ -931,7 +931,7 @@ def get_pending_posts():
 
     except Exception as e:
         logger.error(f"Error getting pending posts: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ============ QUEUE ENDPOINTS ============
@@ -970,7 +970,7 @@ def add_to_queue():
 
     except Exception as e:
         logger.error(f"Error adding to queue: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @api_bp.route("/queue/<int:post_id>", methods=["DELETE"])
@@ -1003,7 +1003,7 @@ def remove_from_queue(post_id):
 
     except Exception as e:
         logger.error(f"Error removing from queue: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500
 
 
 # ============ STATS ENDPOINTS ============
@@ -1038,4 +1038,4 @@ def get_stats():
 
     except Exception as e:
         logger.error(f"Error getting stats: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal server error"}), 500

@@ -10,6 +10,8 @@ jobs:
   backend-lint:
     name: Backend - Lint & Type Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +40,8 @@ jobs:
   frontend-lint:
     name: Frontend - Lint & Type Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -60,6 +64,8 @@ jobs:
   backend-test:
     name: Backend - Unit Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # No service container needed: DATABASE_URL below is a plain file-based
     # SQLite path, not a server - there's no "sqlite" server image because
     # SQLite doesn't have a server to run. (There used to be a `services:
@@ -106,6 +112,8 @@ jobs:
   frontend-test:
     name: Frontend - Unit Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
