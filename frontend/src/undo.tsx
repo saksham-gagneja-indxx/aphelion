@@ -19,6 +19,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 export const UNDO_WINDOW_MS = 15_000
 
@@ -183,7 +184,14 @@ function UndoToasts({
 }) {
   if (pending.length === 0) return null
 
-  return (
+  // Portaled straight to <body>: UndoProvider (and this toast) lives inside
+  // <main className="relative z-10">, which opens its own stacking context.
+  // A z-50 in here would only ever out-rank things inside that same <main> -
+  // it can't reach above BottomNav (z-30), which is <main>'s *sibling* and
+  // physically overlaps this toast's bottom-of-screen position, silently
+  // eating clicks meant for Undo. Escaping to <body> compares z-50 against
+  // BottomNav directly, where it correctly wins.
+  return createPortal(
     <div
       // Above the fold on a phone, out of the way on a desktop. pb-safe-ish
       // inset so it clears a browser's bottom chrome.
@@ -209,6 +217,7 @@ function UndoToasts({
           </button>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   )
 }
