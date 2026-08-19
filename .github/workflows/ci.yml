@@ -60,15 +60,11 @@ jobs:
   backend-test:
     name: Backend - Unit Tests
     runs-on: ubuntu-latest
-    services:
-      sqlite:
-        image: sqlite:latest
-        options: >-
-          --health-cmd="sqlite3 /tmp/test.db 'SELECT 1'"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
+    # No service container needed: DATABASE_URL below is a plain file-based
+    # SQLite path, not a server - there's no "sqlite" server image because
+    # SQLite doesn't have a server to run. (There used to be a `services:
+    # sqlite: image: sqlite:latest` block here; no such image exists, so it
+    # failed this job on every run before pytest ever started.)
     steps:
       - uses: actions/checkout@v4
 
@@ -130,6 +126,9 @@ jobs:
   security-scan:
     name: Security - Scan Dependencies
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # required to upload SARIF to the Security tab
     steps:
       - uses: actions/checkout@v4
 
