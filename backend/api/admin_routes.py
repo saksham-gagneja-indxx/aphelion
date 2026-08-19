@@ -38,7 +38,7 @@ def list_users():
         counts = dict(
             db.query(Post.user_id, func.count(Post.id)).group_by(Post.user_id).all()
         )
-        users = db.query(User).order_by(User.created_at.asc()).all()
+        users = db.query(User).order_by(User.created_at.desc()).all()
         return jsonify({
             "users": [u.to_admin_dict(counts.get(u.id, 0)) for u in users],
             "total": len(users),
