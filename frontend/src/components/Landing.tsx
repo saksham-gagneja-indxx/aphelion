@@ -36,7 +36,7 @@ import {
   linkedInLoginUrl,
   signInAsGuest,
 } from '../api/auth'
-import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW, META } from '../ui'
+import { BANNER_DANGER, BTN_OUTLINE, BTN_PRIMARY, EYEBROW } from '../ui'
 
 const SHOW_CLERK_UI = CLERK_ENABLED && CLERK_SIGNIN_ENABLED
 
