@@ -98,6 +98,14 @@ ssl/
 *.pfx
 
 # ============ DEPLOYMENT ============
+# Broad net rather than one filename per incident: .env.production and
+# .env.production.secrets were both committed with live secrets before this
+# file's narrower rules existed, and ignoring only the exact name that already
+# leaked is how the next variant (.env.staging.secrets, .env.upstash.ready,
+# ...) ships the same way. .env.example is the one .env* file meant to be
+# committed, so it's explicitly un-ignored.
+.env.*
+!.env.example
 .env.production
 .env.staging
 *.hcl
