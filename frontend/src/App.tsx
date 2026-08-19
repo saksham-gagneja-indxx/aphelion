@@ -326,6 +326,40 @@ export default function App() {
     [queryClient],
   )
 
+  // Handle LinkedIn OAuth redirect: when LinkedIn redirects with code & state,
+  // POST to backend to save credentials, then close this tab
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+
+    if (!code || !state) return
+
+    const completeLinkedInAuth = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/linkedin/callback`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('smm.session') || ''}`
+          },
+          body: JSON.stringify({ code, state })
+        })
+
+        if (response.ok) {
+          if (window.opener) {
+            window.opener.postMessage({ type: 'linkedin_auth_complete' }, '*')
+          }
+          setTimeout(() => window.close(), 500)
+        }
+      } catch (err) {
+        console.error('LinkedIn OAuth completion failed:', err)
+      }
+    }
+
+    completeLinkedInAuth()
+  }, [])
+
   // Global loading state while checking session
   if (isPending) {
     return (
