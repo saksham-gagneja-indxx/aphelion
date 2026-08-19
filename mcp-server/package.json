@@ -1,7 +1,16 @@
 {
-	"name": "reel-automation-mcp",
+	"name": "@saksham-gagneja-indxx/post-pilot-mcp",
 	"version": "0.0.1",
-	"private": true,
+	"description": "Claude-powered LinkedIn social media management via MCP. List reels, generate AI captions, draft posts, schedule, and publish to LinkedIn.",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/saksham-gagneja-indxx/postpilot.git"
+	},
+	"author": "Saksham Gagneja",
+	"license": "MIT",
+	"mcpName": "io.github.saksham-gagneja-indxx/post-pilot",
+	"homepage": "https://registry.modelcontextprotocol.io/",
+	"keywords": ["mcp", "linkedin", "social-media", "ai", "automation", "reel", "claude"],
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
