@@ -76,6 +76,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 			"getting_started",
 			"🎬 Get started with reel management! Shows available commands and quick workflow. READ THIS if the person attaches a video: do not try to pass its raw content into any tool call, and follow the upload guidance in this response instead.",
 			{},
+			{ title: "Getting started", readOnlyHint: true, openWorldHint: false },
 			async () => {
 				return textResult(
 					`${identityLine}\n\n` +
@@ -104,6 +105,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 			"show_available_commands",
 			"📋 Show all available commands and detailed descriptions.",
 			{},
+			{ title: "Show available commands", readOnlyHint: true, openWorldHint: false },
 			async () => {
 				return textResult(
 					`${identityLine}\n\n` +
@@ -133,6 +135,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 				url: z.string().describe("A direct, publicly (or presigned-privately) reachable URL to the video file."),
 				filename: z.string().optional().describe("Filename to store it as. Guessed from the URL if omitted."),
 			},
+			{ title: "Upload reel from URL", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 			async ({ url, filename }) => {
 				try {
 					const result = await uploadReelFromUrl(backendEnv, { url, filename });
@@ -156,6 +159,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 					.string()
 					.describe("The attached video file's raw bytes, base64-encoded."),
 			},
+			{ title: "Upload reel", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 			async ({ filename, base64Data }) => {
 				try {
 					const result = await uploadReel(backendEnv, { filename, base64Data });
@@ -174,6 +178,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 			"list_reels",
 			"📽️ List all your uploaded reels (short videos) ready to post. Shows filename, duration, and file size. Start here to see what's available.",
 			{},
+			{ title: "List reels", readOnlyHint: true, openWorldHint: true },
 			async () => {
 				try {
 					const { reels } = await listReels(backendEnv);
@@ -207,6 +212,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 					.optional()
 					.describe("The draft returned by a previous draft_post call, to continue the conversation."),
 			},
+			{ title: "Draft post", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 			async ({ message, priorDraft }) => {
 				try {
 					const result = await composerTurn(backendEnv, {
@@ -232,6 +238,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 					.describe("The reel's path, from list_reels or a draft_post result."),
 				caption: z.string(),
 			},
+			{ title: "Publish reel", readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
 			async ({ videoPath, caption }) => {
 				try {
 					const post = await createPost(backendEnv, {
@@ -259,6 +266,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 					.string()
 					.describe("Local datetime as YYYY-MM-DDTHH:MM, in the account's configured timezone. Must be in the future."),
 			},
+			{ title: "Schedule reel", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 			async ({ videoPath, caption, scheduledTime }) => {
 				try {
 					const post = await createPost(backendEnv, {
@@ -282,6 +290,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 			{
 				status: z.string().optional().describe("Filter to one status: draft, queued, scheduled, posted, failed, cancelled. Omit to list all."),
 			},
+			{ title: "List posts", readOnlyHint: true, openWorldHint: true },
 			async ({ status }) => {
 				try {
 					const { posts } = await listPosts(backendEnv, status);
@@ -307,6 +316,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 			{
 				postId: z.number().describe("The post's numeric id - from list_posts, or a 'Post id: 28' line earlier in this conversation."),
 			},
+			{ title: "Delete post", readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
 			async ({ postId }) => {
 				try {
 					const result = await deletePost(backendEnv, postId);
@@ -328,6 +338,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 					.optional()
 					.describe("New local datetime as YYYY-MM-DDTHH:MM, in the account's configured timezone. Must be in the future."),
 			},
+			{ title: "Edit post", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
 			async ({ postId, caption, scheduledTime }) => {
 				try {
 					const result = await editPost(backendEnv, postId, { caption, scheduledTime });
