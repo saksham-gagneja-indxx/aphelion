@@ -209,6 +209,34 @@ def set_github(user_id: int):
         db.close()
 
 
+@admin_bp.route("/users/<int:user_id>/linkedin-sub", methods=["DELETE"])
+def clear_linkedin_sub(user_id: int):
+    """Free up a linkedin_sub stuck on an orphaned/empty duplicate account,
+    so the real account can claim it via backfill-linkedin-sub below.
+
+    Only ever meant for cleaning up a specific known duplicate (created
+    before _resolve_user's reconnect fix started backfilling linkedin_sub
+    automatically) - refuses on any account with real activity, so it can't
+    accidentally strand a real user's identity mid-use.
+    """
+    db = get_session()
+    try:
+        target = db.query(User).filter(User.id == user_id).first()
+        if target is None:
+            return jsonify({"error": "User not found"}), 404
+        has_posts = db.query(Post.id).filter(Post.user_id == target.id).first() is not None
+        if target.is_active or has_posts:
+            return jsonify({
+                "error": "Refusing to clear linkedin_sub on an active account with activity."
+            }), 409
+
+        target.linkedin_sub = None
+        db.commit()
+        return jsonify({"id": target.id, "linkedin_sub": None}), 200
+    finally:
+        db.close()
+
+
 @admin_bp.route("/users/<int:user_id>/backfill-linkedin-sub", methods=["POST"])
 def backfill_linkedin_sub(user_id: int):
     """Repair tool for accounts stuck without a linkedin_sub.
