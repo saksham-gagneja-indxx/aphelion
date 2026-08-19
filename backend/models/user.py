@@ -6,7 +6,7 @@ Stores Instagram and LinkedIn account information
 import re
 from typing import Optional
 
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from backend.utils.timeutil import utcnow
@@ -68,8 +68,28 @@ class User(Base):
     linkedin_connected = Column(Boolean, default=False)
     # Author URN used on every publish, e.g. "urn:li:person:abc123".
     linkedin_person_urn = Column(String(255), nullable=True)
-    linkedin_access_token = Column(String(2000), nullable=True)
-    linkedin_refresh_token = Column(String(2000), nullable=True)
+
+    # These carry real publish rights on a real member's LinkedIn account -
+    # the single most sensitive thing this table stores, more so than the
+    # per-user app client secret below, which is why they get the same
+    # Fernet encryption that one already had. `linkedin_access_token` and
+    # `linkedin_refresh_token` are Python properties (below) backed by these
+    # `_encrypted` columns; every existing call site (store_linkedin_token,
+    # linkedin_token_valid, get_publisher's getattr, ...) keeps working
+    # unchanged since the attribute name never moved, only what's behind it.
+    #
+    # `_linkedin_access_token_legacy` / `_linkedin_refresh_token_legacy` map
+    # to the ORIGINAL plaintext columns (same DB column names as before this
+    # change) purely so already-deployed rows aren't silently orphaned: the
+    # property getter falls back to them if the encrypted column is empty,
+    # and any write (a fresh sign-in, a token refresh) re-saves through the
+    # encrypted column and blanks the legacy one, self-healing the row.
+    # `admin_cli encrypt-linkedin-tokens` forces this immediately for every
+    # row instead of waiting for each user's next sign-in.
+    linkedin_access_token_encrypted = Column(Text, nullable=True)
+    linkedin_refresh_token_encrypted = Column(Text, nullable=True)
+    _linkedin_access_token_legacy = Column("linkedin_access_token", String(2000), nullable=True)
+    _linkedin_refresh_token_legacy = Column("linkedin_refresh_token", String(2000), nullable=True)
     # Access tokens last ~60 days, refresh tokens ~365. Stored so the UI can
     # warn before expiry instead of discovering it when a scheduled post fires.
     linkedin_token_expires_at = Column(DateTime, nullable=True)
@@ -204,6 +224,40 @@ class User(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
         }
+
+    @property
+    def linkedin_access_token(self) -> Optional[str]:
+        return self._decrypt_or_legacy(
+            self.linkedin_access_token_encrypted, self._linkedin_access_token_legacy
+        )
+
+    @linkedin_access_token.setter
+    def linkedin_access_token(self, value: Optional[str]) -> None:
+        from backend.utils.crypto import encrypt_secret
+
+        self.linkedin_access_token_encrypted = encrypt_secret(value) if value else None
+        self._linkedin_access_token_legacy = None
+
+    @property
+    def linkedin_refresh_token(self) -> Optional[str]:
+        return self._decrypt_or_legacy(
+            self.linkedin_refresh_token_encrypted, self._linkedin_refresh_token_legacy
+        )
+
+    @linkedin_refresh_token.setter
+    def linkedin_refresh_token(self, value: Optional[str]) -> None:
+        from backend.utils.crypto import encrypt_secret
+
+        self.linkedin_refresh_token_encrypted = encrypt_secret(value) if value else None
+        self._linkedin_refresh_token_legacy = None
+
+    @staticmethod
+    def _decrypt_or_legacy(encrypted: Optional[str], legacy_plaintext: Optional[str]) -> Optional[str]:
+        if encrypted:
+            from backend.utils.crypto import decrypt_secret
+
+            return decrypt_secret(encrypted)
+        return legacy_plaintext
 
     def mark_instagram_connected(self, user_id: str, session_id: str):
         """Mark Instagram as successfully connected"""
