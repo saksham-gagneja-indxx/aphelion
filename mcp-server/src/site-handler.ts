@@ -51,9 +51,9 @@ app.get("/authorize", async (c) => {
 		csrfToken,
 		server: {
 			description:
-				"Lets Claude list your reels, draft LinkedIn posts, and schedule or publish them. You'll sign in on the Post Pilot website - no GitHub account needed.",
+				"Lets Claude list your reels, draft LinkedIn posts, and schedule or publish them. You'll sign in on the Aphelion website - no GitHub account needed.",
 			logo: "https://postpilot-sandy.vercel.app/logo.png",
-			name: "Post Pilot",
+			name: "Aphelion",
 		},
 		setCookie,
 		state: { oauthReqInfo },

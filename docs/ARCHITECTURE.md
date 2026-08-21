@@ -1,6 +1,6 @@
-# Post Pilot — System Architecture & Database Schema
+# Aphelion — System Architecture & Database Schema
 
-This document describes how the backend, database, and integrations of Post Pilot work together. It reflects the current state of the code, not aspirational design.
+This document describes how the backend, database, and integrations of Aphelion work together. It reflects the current state of the code, not aspirational design.
 
 ---
 

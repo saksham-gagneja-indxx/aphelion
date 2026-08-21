@@ -1,6 +1,6 @@
-# Publishing Post Pilot MCP
+# Publishing Aphelion MCP
 
-Guide for publishing the Post Pilot MCP to registries and making it globally discoverable.
+Guide for publishing the Aphelion MCP to registries and making it globally discoverable.
 
 ---
 
@@ -19,17 +19,17 @@ The official registry at https://registry.modelcontextprotocol.io allows anyone 
    - Create file: `src/post-pilot.ts` with:
 
    ```typescript
-   export const POST_PILOT: Implementation = {
-     name: "post-pilot",
-     source: "https://github.com/saksham-gagneja-indxx/Social-Media-Manager/tree/feat/mcp-deployment/mcp-server",
-     description: "Control Post Pilot social media management from Claude — list reels, draft posts, schedule uploads, publish to LinkedIn",
-     repo: "https://github.com/saksham-gagneja-indxx/Social-Media-Manager",
+   export const Aphelion: Implementation = {
+     name: "aphelion",
+     source: "https://github.com/saksham-gagneja-indxx/aphelion/tree/feat/mcp-deployment/mcp-server",
+     description: "Control Aphelion social media management from Claude — list reels, draft posts, schedule uploads, publish to LinkedIn",
+     repo: "https://github.com/saksham-gagneja-indxx/aphelion",
      tags: ["social-media", "linkedin", "posting", "ai-assistant"],
      author: "saksham-gagneja-indxx",
-     homepage: "https://github.com/saksham-gagneja-indxx/Social-Media-Manager",
+     homepage: "https://github.com/saksham-gagneja-indxx/aphelion",
      contact: "sgagneja@indxx.com",
      license: "MIT",
-     requirements: ["cloudflare-account", "github-account", "post-pilot-backend"],
+     requirements: ["cloudflare-account", "github-account", "aphelion-backend"],
      setupTimeEstimate: "5-15 minutes",
      type: "remote-http",
      transport: {
@@ -44,18 +44,18 @@ The official registry at https://registry.modelcontextprotocol.io allows anyone 
    ```
 
 3. **Update `src/servers.ts`**
-   - Add: `import { POST_PILOT } from './post-pilot';`
-   - Add to exports array: `POST_PILOT,`
+   - Add: `import { Aphelion } from './post-pilot';`
+   - Add to exports array: `Aphelion,`
 
 4. **Create Pull Request**
    - Commit & push to your fork
    - Open PR to `modelcontextprotocol/servers` main
-   - Title: "Add Post Pilot MCP (social media management for Claude)"
+   - Title: "Add Aphelion MCP (social media management for Claude)"
    - Description:
      ```
-     # Post Pilot MCP
+     # Aphelion MCP
      
-     **What:** Control Post Pilot social media management entirely through Claude
+     **What:** Control Aphelion social media management entirely through Claude
      
      **Features:**
      - List uploaded reels
@@ -84,24 +84,24 @@ Create a GitHub release so people can install directly from your repo.
 1. **Create GitHub Release**
 
    ```bash
-   cd ~/Social-Media-Manager
+   cd ~/aphelion
    git tag v1.0.0
    git push origin v1.0.0
    ```
 
    Then on GitHub:
-   - Go to https://github.com/saksham-gagneja-indxx/Social-Media-Manager/releases
+   - Go to https://github.com/saksham-gagneja-indxx/aphelion/releases
    - Click "Draft a new release"
    - Choose tag: `v1.0.0`
-   - Title: `Post Pilot MCP v1.0.0 — Live`
+   - Title: `Aphelion MCP v1.0.0 — Live`
    - Description:
 
    ```markdown
-   # Post Pilot MCP v1.0.0
+   # Aphelion MCP v1.0.0
 
    **Claude can now manage your social media!**
 
-   The Post Pilot MCP server is ready for production use. Deploy to Cloudflare Workers in 5 minutes.
+   The Aphelion MCP server is ready for production use. Deploy to Cloudflare Workers in 5 minutes.
 
    ## What's New
 
@@ -118,7 +118,7 @@ Create a GitHub release so people can install directly from your repo.
    Takes 5-15 minutes. Needs:
    - Cloudflare account (free)
    - GitHub account
-   - Post Pilot backend running
+   - Aphelion backend running
 
    ## Try It
 
@@ -153,7 +153,7 @@ Create a GitHub release so people can install directly from your repo.
 
    Share on LinkedIn/Twitter:
    ```
-   🚀 Post Pilot MCP is live!
+   🚀 Aphelion MCP is live!
 
    Let Claude manage your LinkedIn posting. No UI switching — just ask Claude:
    "Schedule my latest reel for tomorrow at 9am"
@@ -182,18 +182,18 @@ npm publish --registry https://registry.npmjs.org/ --scope @saksham-gagneja-indx
 Add to `package.json`:
 ```json
 {
-  "name": "@saksham-gagneja-indxx/post-pilot-mcp",
+  "name": "@saksham-gagneja-indxx/aphelion-mcp",
   "version": "1.0.0",
-  "description": "MCP server for controlling Post Pilot social media management from Claude",
+  "description": "MCP server for controlling Aphelion social media management from Claude",
   "keywords": ["mcp", "claude", "social-media", "linkedin", "ai"],
-  "repository": "https://github.com/saksham-gagneja-indxx/Social-Media-Manager",
+  "repository": "https://github.com/saksham-gagneja-indxx/aphelion",
   "main": "dist/index.js"
 }
 ```
 
 Then users can install & deploy via:
 ```bash
-npx @saksham-gagneja-indxx/post-pilot-mcp deploy
+npx @saksham-gagneja-indxx/aphelion-mcp deploy
 ```
 
 ---

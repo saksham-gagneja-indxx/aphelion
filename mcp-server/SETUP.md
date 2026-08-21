@@ -1,4 +1,4 @@
-# Post Pilot MCP Setup Guide
+# Aphelion MCP Setup Guide
 
 Get the Claude connector working in **15 minutes**.
 
@@ -35,7 +35,7 @@ Copy the returned **id** and update `wrangler.jsonc` line 41:
 1. Go to [github.com/settings/developers](https://github.com/settings/developers)
 2. Click "New OAuth App"
 3. Fill in:
-   - **Application name**: `Post Pilot MCP`
+   - **Application name**: `Aphelion MCP`
    - **Homepage URL**: `https://post-pilot.<your-subdomain>.workers.dev`
    - **Authorization callback URL**: `https://post-pilot.<your-subdomain>.workers.dev/callback`
 4. Click "Register application"
@@ -120,7 +120,7 @@ On first use, you'll be prompted to sign in with GitHub. Done!
 |---|---|
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | OAuth with GitHub — controls who can access the tools |
 | `COOKIE_ENCRYPTION_KEY` | Secures the OAuth session state |
-| `BACKEND_API_URL` | Where your Post Pilot backend is running |
+| `BACKEND_API_URL` | Where your Aphelion backend is running |
 | `BACKEND_API_KEY` | Bearer token for the backend API |
 | `BACKEND_USER_ID` | Which account the tools act as (fixed, not per-user) |
 | `ALLOWED_GITHUB_USERNAMES` | GitHub usernames allowed to use the tools (fail-closed if empty) |

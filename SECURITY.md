@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-Thank you for helping us keep POST_PILOT secure! If you discover a security vulnerability, please report it responsibly.
+Thank you for helping us keep Aphelion secure! If you discover a security vulnerability, please report it responsibly.
 
 ### How to Report
 
@@ -25,7 +25,7 @@ We aim to:
 
 ### Security Best Practices
 
-When using POST_PILOT:
+When using Aphelion:
 
 1. **GitHub OAuth Credentials**
    - Only grant necessary permissions
@@ -63,7 +63,7 @@ When using POST_PILOT:
 ### Security Advisories
 
 We publish security advisories on GitHub when vulnerabilities are discovered and fixed:
-https://github.com/saksham-gagneja-indxx/postpilot/security/advisories
+https://github.com/saksham-gagneja-indxx/aphelion/security/advisories
 
 ### Contact
 
@@ -71,7 +71,7 @@ https://github.com/saksham-gagneja-indxx/postpilot/security/advisories
 - **General Questions**: GitHub Issues
 - **Feature Requests**: GitHub Discussions
 
-Thank you for your responsible disclosure and support of POST_PILOT! 🙏
+Thank you for your responsible disclosure and support of Aphelion! 🙏
 
 ---
 

@@ -1,20 +1,20 @@
 # Installation Guide
 
-Get Post Pilot MCP running in 5 minutes.
+Get Aphelion MCP running in 5 minutes.
 
 ## Prerequisites
 
 - GitHub account (for OAuth)
 - Cloudflare account (free)
 - Claude Desktop, claude.ai, or Claude Code
-- A Post Pilot backend deployment (or use the public one)
+- A Aphelion backend deployment (or use the public one)
 
 ## Step 1: Create a GitHub OAuth App
 
 1. Go to https://github.com/settings/apps
 2. Click "New GitHub App"
 3. Fill in:
-   - **App name**: `post-pilot-mcp` (or your name)
+   - **App name**: `aphelion-mcp` (or your name)
    - **Homepage URL**: `https://post-pilot.example.com`
    - **Authorization callback URL**: `https://your-worker.workers.dev/callback`
 4. Under "Permissions":
@@ -28,8 +28,8 @@ Get Post Pilot MCP running in 5 minutes.
 
 ### 2a. Clone the repository
 ```bash
-git clone https://github.com/saksham-gagneja-indxx/postpilot.git
-cd postpilot/mcp-server
+git clone https://github.com/saksham-gagneja-indxx/aphelion.git
+cd aphelion/mcp-server
 ```
 
 ### 2b. Install dependencies
@@ -90,18 +90,18 @@ Copy your Worker URL (e.g., `https://post-pilot-abc123.workers.dev`)
 
 ## Step 5: Authenticate
 
-When you first use a Post Pilot tool in Claude:
+When you first use a Aphelion tool in Claude:
 1. Claude will prompt you to authorize
 2. Click the GitHub OAuth link
 3. Authorize access to your GitHub account
 4. You'll be added to the allowlist
-5. Return to Claude—you're ready to use Post Pilot!
+5. Return to Claude—you're ready to use Aphelion!
 
 ---
 
 ## Using Google Drive for Video Upload
 
-Post Pilot can upload videos directly from your Google Drive:
+Aphelion can upload videos directly from your Google Drive:
 
 ### 1. Get a Shareable Link
 - Right-click video in Drive → Share
@@ -118,7 +118,7 @@ Upload this video from Google Drive:
 https://drive.google.com/uc?export=download&id=ABC123XYZ
 ```
 
-Claude will fetch it server-side and upload to Post Pilot automatically.
+Claude will fetch it server-side and upload to Aphelion automatically.
 
 ---
 

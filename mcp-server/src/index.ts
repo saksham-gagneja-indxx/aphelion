@@ -38,7 +38,7 @@ function errorResult(e: unknown) {
 export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 
 	server = new McpServer({
-		name: "Post Pilot",
+		name: "Aphelion",
 		version: "1.0.0",
 		description: "LinkedIn reel automation: upload, caption, schedule, and publish videos. Use 'show_available_commands' to see what you can do.",
 	});
@@ -83,7 +83,7 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, SiteProps> {
 					`🎯 **Welcome to Reel Management!**\n\n` +
 					`**If someone attaches a video in this chat, do NOT try to read or re-encode its raw bytes into any tool call - that reliably fails or hangs for anything but a trivially small file. Instead:**\n` +
 					`1. If a Google Drive connector is also connected, try uploading the attached file to their Drive through it, turn on link sharing ("Anyone with the link"), then pass that resulting shareable link to upload_reel_from_url.\n` +
-					`2. If there's no Drive connector, or that doesn't produce a working link, say so plainly and ask them to host the video somewhere (Drive/Dropbox/etc. with a shareable link) and paste the link, or upload it directly through the Post Pilot web app. Don't silently retry the same failing approach.\n\n` +
+					`2. If there's no Drive connector, or that doesn't produce a working link, say so plainly and ask them to host the video somewhere (Drive/Dropbox/etc. with a shareable link) and paste the link, or upload it directly through the Aphelion web app. Don't silently retry the same failing approach.\n\n` +
 					`Here's what you can do right now:\n\n` +
 					`📤 **upload_reel_from_url** - Give a direct video link (Drive/Dropbox/S3/etc.) - the reliable way to get any real reel in\n` +
 					`📎 **upload_reel** - Attach a video right here in chat (tiny clips only, a few MB at most - not for real reels)\n` +

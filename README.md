@@ -1,4 +1,4 @@
-# Post Pilot
+# Aphelion
 
 Upload a video once, and publish or schedule it to LinkedIn from a single
 dashboard — with roles, approvals, and an audit trail for every post.
@@ -131,8 +131,8 @@ reel that a not-yet-published post still points at is refused outright.
 thumbnail is generated).
 
 ```bash
-git clone https://github.com/saksham-gagneja-indxx/social-media-manager.git
-cd social-media-manager
+git clone https://github.com/saksham-gagneja-indxx/aphelion.git
+cd aphelion
 
 python -m venv .venv
 .venv\Scripts\activate          # Windows

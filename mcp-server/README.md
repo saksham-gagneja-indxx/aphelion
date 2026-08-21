@@ -1,8 +1,8 @@
-# Post Pilot MCP Server
+# Aphelion MCP Server
 
 **Let Claude manage your LinkedIn social media.** 📱
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that connects Claude to Post Pilot, giving Claude the power to:
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that connects Claude to Aphelion, giving Claude the power to:
 
 - 📤 **Upload reels** — from URLs (Google Drive, Dropbox, S3) or direct files
 - 🤖 **Generate AI captions** — Claude-powered caption suggestions  
@@ -11,7 +11,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 - 🚀 **Publish immediately** — push reels live to LinkedIn (with confirmation)
 - 📋 **List reels** — see what's available to post
 
-Use it in **Claude Desktop**, **claude.ai**, or **Claude Code** to control Post Pilot entirely through conversation.
+Use it in **Claude Desktop**, **claude.ai**, or **Claude Code** to control Aphelion entirely through conversation.
 
 ---
 
@@ -25,7 +25,7 @@ with a caption about our product launch
 
 Claude will:
 1. Get your Google Drive link
-2. Upload the video to Post Pilot
+2. Upload the video to Aphelion
 3. Draft a compelling caption
 4. Schedule it for optimal engagement time
 5. Confirm completion
@@ -221,7 +221,7 @@ Get a full reference of all available commands and pro tips
 - [Cloudflare Workers](https://workers.cloudflare.com) — free, always-on (no idle sleep)
 - [Model Context Protocol](https://modelcontextprotocol.io/) — Anthropic's open standard for tool integration
 - [GitHub OAuth](https://docs.github.com/en/developers/apps/building-oauth-apps) — secure authentication
-- [Post Pilot Backend API](https://github.com/saksham-gagneja-indxx/postpilot)
+- [Aphelion Backend API](https://github.com/saksham-gagneja-indxx/aphelion)
 - [Claude AI](https://claude.ai/) — for caption generation and composition
 
 ---
@@ -250,7 +250,7 @@ Get a full reference of all available commands and pro tips
 **Solution:**
 - Use `schedule_reel` instead of `publish_reel` to plan ahead
 - Always review draft before confirming publish
-- LinkedIn doesn't provide an API to delete posts from Post Pilot
+- LinkedIn doesn't provide an API to delete posts from Aphelion
 
 ---
 
@@ -277,4 +277,4 @@ Get a full reference of all available commands and pro tips
 
 Generated: 2026-08-19  
 Registry: [MCP Server Registry](https://registry.modelcontextprotocol.io/)  
-npm: [@sakshamgagneja/post-pilot-mcp](https://www.npmjs.com/package/@sakshamgagneja/post-pilot-mcp)
+npm: [@sakshamgagneja/aphelion-mcp](https://www.npmjs.com/package/@sakshamgagneja/aphelion-mcp)
