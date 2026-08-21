@@ -20,8 +20,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, envDir, '')
   const target = env.VITE_API_TARGET || DEFAULT_API_TARGET
 
-  // Ensure VITE_API_URL is set for production builds
-  if (mode === 'production' && !process.env.VITE_API_URL) {
+  // Ensure VITE_API_URL is set for production builds. Checked against the
+  // loaded .env file too, not just the shell - otherwise a value set only in
+  // .env.production is silently overwritten by the Render fallback here.
+  if (mode === 'production' && !process.env.VITE_API_URL && !env.VITE_API_URL) {
     process.env.VITE_API_URL = DEFAULT_API_URL
   }
 
