@@ -55,7 +55,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         env:
-          VITE_API_URL: http://${{ secrets.EC2_HOST }}
+          VITE_API_URL: ${{ secrets.BACKEND_URL }}
           VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
         run: |
           npm install
