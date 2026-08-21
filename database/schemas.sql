@@ -1,5 +1,5 @@
 -- ============================================
--- Social Media Automation Agent - Database Schema
+-- Aphelion - Database Schema
 -- ============================================
 -- This file contains the SQL schema for the database
 -- Can be used for manual setup or reference

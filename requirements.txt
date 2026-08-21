@@ -56,6 +56,10 @@ pillow==12.3.0
 # ============ PRODUCTION SERVER ============
 gunicorn==22.0.0
 
+# ============ OBJECT STORAGE ============
+# Only used when MEDIA_BACKEND=object (backend/core/storage.py ObjectMediaStore).
+boto3==1.35.0
+
 # ============ CLERK AUTH ============
 # JWT verification (Clerk session tokens) and the Fernet cipher used to store
 # per-user LinkedIn app credentials at rest. No Clerk SDK: the surface we need

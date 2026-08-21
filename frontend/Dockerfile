@@ -1,4 +1,4 @@
-# Multi-stage build for Social Media Manager frontend
+# Multi-stage build for Aphelion frontend
 
 # Stage 1: Builder
 FROM node:18-alpine as builder

@@ -1,5 +1,5 @@
 """
-Core functionality for Social Media Automation Agent
+Core functionality for Aphelion
 Agent, scheduler, and reel management modules
 """
 

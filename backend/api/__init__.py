@@ -1,5 +1,5 @@
 """
-API module for Social Media Automation Agent
+API module for Aphelion
 REST endpoints and request handling
 """
 

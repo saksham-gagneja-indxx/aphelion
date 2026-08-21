@@ -1,5 +1,5 @@
 """
-Configuration management for Social Media Automation Agent
+Configuration management for Aphelion
 Uses environment variables and pydantic for validation
 """
 

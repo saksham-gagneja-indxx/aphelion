@@ -284,7 +284,7 @@ def mcp_link_start():
 def mcp_authorize_connector():
     """Approve one MCP connector authorization attempt as the signed-in user.
 
-    This is the piece that lets connecting Post Pilot skip GitHub (or any
+    This is the piece that lets connecting Aphelion skip GitHub (or any
     third-party OAuth screen) entirely: the Cloudflare Worker's own OAuth
     flow sends the browser to the WEBSITE instead of a third party, the
     website is what actually authenticates them (however they normally sign

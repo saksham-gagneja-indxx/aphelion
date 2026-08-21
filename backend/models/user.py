@@ -1,5 +1,5 @@
 """
-User model for Social Media Automation Agent
+User model for Aphelion
 Stores Instagram and LinkedIn account information
 """
 

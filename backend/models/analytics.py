@@ -1,5 +1,5 @@
 """
-Analytics model for Social Media Automation Agent
+Analytics model for Aphelion
 Stores engagement analytics and optimal posting time calculations
 """
 

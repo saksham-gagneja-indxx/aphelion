@@ -1,5 +1,5 @@
 {
-  "name": "social-media-manager",
+  "name": "aphelion",
   "version": "1.0.0",
   "scripts": {
     "build:prod": "cd frontend && VITE_API_URL=https://social-media-manager-api-wk5g.onrender.com npm run build"

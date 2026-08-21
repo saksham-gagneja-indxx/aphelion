@@ -135,56 +135,102 @@ class LocalMediaStore(MediaStore):
 
 
 class ObjectMediaStore(MediaStore):
-    """Placeholder for S3 / R2 / GCS.
+    """S3-backed store.
 
-    Left unimplemented on purpose rather than half-written against an SDK
-    nobody has chosen yet. What a real implementation owes each method is
-    written on it, so the work is filling in bodies rather than rediscovering
-    the shape.
-
-    Switching over is: implement these five, add the SDK to requirements, and
-    set `MEDIA_BACKEND=object`. Nothing above this class changes — `local_path`
-    is the only place the difference leaks, and it is already a seam.
+    The bucket is the source of truth, keyed by `<user_id>/<filename>`.
+    `self.scratch` is only where in-flight uploads and ffmpeg/ffprobe
+    downloads land — never treated as the real copy.
     """
 
     def __init__(self, bucket: str, scratch: Path):
+        import boto3  # local import: only paid for when MEDIA_BACKEND=object
+
         self.bucket = bucket
         self.scratch = Path(scratch)
         self.scratch.mkdir(parents=True, exist_ok=True)
+        self._s3 = boto3.client("s3")
 
-    def _unimplemented(self, what: str):
-        raise NotImplementedError(
-            f"ObjectMediaStore.{what} is not implemented. Set MEDIA_BACKEND=local, "
-            "or implement this class against your object store."
-        )
+    def _key(self, user_id: int, filename: str) -> Optional[str]:
+        # Same containment check as LocalMediaStore, applied to the object key.
+        if not filename or "/" in filename or "\\" in filename or filename in (".", ".."):
+            return None
+        if ".." in Path(filename).parts:
+            return None
+        return f"{user_id}/{filename}"
 
     def user_dir(self, user_id: int) -> Path:
-        # Scratch space for in-flight uploads; the bucket is the real home.
         d = self.scratch / str(user_id)
         d.mkdir(parents=True, exist_ok=True)
         return d
 
     def resolve(self, user_id: int, filename: str) -> Optional[Path]:
-        # Should map to an object key `<user_id>/<filename>` after the same
-        # containment check LocalMediaStore performs.
-        self._unimplemented("resolve")
+        key = self._key(user_id, filename)
+        if key is None:
+            logger.warning(f"Rejected out-of-folder media name: {filename!r}")
+            return None
+        # Not a real filesystem path — a stand-in that carries the object key
+        # through the rest of the call chain (mirrored by scratch layout).
+        return self.user_dir(user_id) / filename
 
     def exists(self, user_id: int, filename: str) -> bool:
-        # HEAD the object.
-        self._unimplemented("exists")
+        key = self._key(user_id, filename)
+        if key is None:
+            return False
+        try:
+            self._s3.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except Exception:
+            return False
 
     def list_files(self, user_id: int, suffixes: tuple[str, ...]) -> List[Path]:
-        # List the `<user_id>/` prefix, filter by suffix, sort by LastModified.
-        self._unimplemented("list_files")
+        wanted = {s.lower().lstrip(".") for s in suffixes}
+        prefix = f"{user_id}/"
+        objects = []
+        paginator = self._s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                name = key[len(prefix):]
+                if "/" in name:
+                    continue
+                suffix = Path(name).suffix.lower().lstrip(".")
+                if suffix in wanted:
+                    objects.append((obj["LastModified"], name))
+        objects.sort(key=lambda t: t[0], reverse=True)
+        return [self.user_dir(user_id) / name for _, name in objects]
 
     def delete(self, path: Path) -> bool:
-        self._unimplemented("delete")
+        user_id, filename = path.parent.name, path.name
+        key = self._key(int(user_id), filename)
+        if key is None:
+            return False
+        try:
+            self._s3.delete_object(Bucket=self.bucket, Key=key)
+            return True
+        except Exception as e:
+            logger.error(f"Could not delete s3://{self.bucket}/{key}: {e}")
+            return False
+
+    def upload(self, user_id: int, filename: str, local_file: Path) -> None:
+        """Push a scratch file up to the bucket. Called after writing to `user_dir`."""
+        key = self._key(user_id, filename)
+        if key is None:
+            raise ValueError(f"Refusing to upload out-of-folder name: {filename!r}")
+        self._s3.upload_file(str(local_file), self.bucket, key)
 
     @contextmanager
     def local_path(self, path: Path) -> Iterator[Path]:
-        # Download to self.scratch, yield it, remove it in a finally block.
-        self._unimplemented("local_path")
-        yield path  # pragma: no cover - unreachable, keeps the type honest
+        user_id, filename = path.parent.name, path.name
+        key = self._key(int(user_id), filename)
+        if key is None:
+            raise ValueError(f"Refusing to resolve out-of-folder name: {filename!r}")
+        dest = self.user_dir(int(user_id)) / filename
+        if not dest.exists():
+            self._s3.download_file(self.bucket, key, str(dest))
+        try:
+            yield dest
+        finally:
+            dest.unlink(missing_ok=True)
 
 
 _store: Optional[MediaStore] = None

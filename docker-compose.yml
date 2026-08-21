@@ -4,9 +4,9 @@ services:
   # PostgreSQL Database (optional - if migrating from SQLite)
   postgres:
     image: postgres:15-alpine
-    container_name: postpilot-db
+    container_name: aphelion-db
     environment:
-      POSTGRES_DB: ${DB_NAME:-postpilot}
+      POSTGRES_DB: ${DB_NAME:-aphelion}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
@@ -19,12 +19,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - postpilot-network
+      - aphelion-network
 
   # Redis (for caching and job queue)
   redis:
     image: redis:7-alpine
-    container_name: postpilot-redis
+    container_name: aphelion-redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
@@ -36,20 +36,20 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - postpilot-network
+      - aphelion-network
 
   # Backend API
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: postpilot-backend
+    container_name: aphelion-backend
     environment:
       FLASK_ENV: ${FLASK_ENV:-production}
       FLASK_PORT: ${FLASK_PORT:-5000}
       SECRET_KEY: ${SECRET_KEY}
       API_ACCESS_KEY: ${API_ACCESS_KEY}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-postpilot}}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-aphelion}}
       REDIS_URL: redis://redis:6379/0
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
@@ -70,7 +70,7 @@ services:
       - ./backend:/app/backend
       - ./data:/app/data
     networks:
-      - postpilot-network
+      - aphelion-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -84,7 +84,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: postpilot-frontend
+    container_name: aphelion-frontend
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
       VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
@@ -94,7 +94,7 @@ services:
     depends_on:
       - backend
     networks:
-      - postpilot-network
+      - aphelion-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5173"]
@@ -106,7 +106,7 @@ services:
   # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
-    container_name: postpilot-nginx
+    container_name: aphelion-nginx
     ports:
       - "80:80"
       - "443:443"
@@ -117,7 +117,7 @@ services:
       - backend
       - frontend
     networks:
-      - postpilot-network
+      - aphelion-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
@@ -132,5 +132,5 @@ volumes:
     driver: local
 
 networks:
-  postpilot-network:
+  aphelion-network:
     driver: bridge

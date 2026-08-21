@@ -1,5 +1,5 @@
 """
-Post model for Social Media Automation Agent
+Post model for Aphelion
 Stores information about reels and posts scheduled/posted
 """
 

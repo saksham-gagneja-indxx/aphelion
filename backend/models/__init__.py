@@ -1,5 +1,5 @@
 """
-Database models for Social Media Automation Agent
+Database models for Aphelion
 All models inherit from Base defined in database.py
 """
 

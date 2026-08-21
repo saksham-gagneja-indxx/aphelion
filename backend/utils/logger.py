@@ -1,5 +1,5 @@
 """
-Centralized logging configuration for Social Media Automation Agent
+Centralized logging configuration for Aphelion
 Handles both file and console logging with appropriate levels
 """
 

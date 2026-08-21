@@ -1,5 +1,5 @@
 """
-Database connection and initialization for Social Media Automation Agent
+Database connection and initialization for Aphelion
 Uses SQLAlchemy ORM for database abstraction
 """
 

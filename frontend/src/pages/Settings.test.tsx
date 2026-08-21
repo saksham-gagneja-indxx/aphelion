@@ -5,7 +5,7 @@ import { renderWithQuery } from '../test/utils'
 
 // Backend responses for happy path
 const STATUS_OK = {
-  app: 'Social Media Manager',
+  app: 'Aphelion',
   version: '1.0.0',
   environment: 'development',
   debug: true,

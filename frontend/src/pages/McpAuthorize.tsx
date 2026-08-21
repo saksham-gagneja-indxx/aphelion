@@ -1,7 +1,7 @@
 /**
  * Landing page for the website-mediated MCP connector authorization.
  *
- * Reached when someone clicks "Connect" on the Post Pilot connector in
+ * Reached when someone clicks "Connect" on the Aphelion connector in
  * Claude: the Cloudflare Worker's own OAuth flow sends the browser here
  * instead of to GitHub (or any third-party consent screen) - see
  * mcp-server/src/site-handler.ts. This page is what actually authenticates
@@ -104,10 +104,10 @@ export default function McpAuthorize() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-ink-950 px-6 text-center">
       <BoltLogo className="mb-8 h-8 w-8 text-mist-50" />
       <h1 className="font-display text-[32px] font-light tracking-[-.02em] text-mist-50">
-        Connect Post Pilot
+        Connect Aphelion
       </h1>
       <p className="mt-3 max-w-[420px] text-[15px] leading-[1.65] text-mist-500">
-        Claude wants to connect to your Post Pilot account.
+        Claude wants to connect to your Aphelion account.
       </p>
 
       {missingParams ? (
@@ -144,7 +144,7 @@ export default function McpAuthorize() {
           ) : !linkedInConnected ? (
             <>
               <p className={`${META} text-center`}>
-                Signed in as {user.name || user.email}. Post Pilot also needs LinkedIn connected to
+                Signed in as {user.name || user.email}. Aphelion also needs LinkedIn connected to
                 publish on your behalf.
               </p>
               <button
@@ -157,7 +157,7 @@ export default function McpAuthorize() {
               </button>
             </>
           ) : (
-            <p className={META}>Connecting Post Pilot to Claude…</p>
+            <p className={META}>Connecting Aphelion to Claude…</p>
           )}
 
           {error && <p className={`${BANNER_DANGER_INLINE} w-full`}>{error}</p>}

@@ -1,997 +1,454 @@
-# Architecture
+# Post Pilot — System Architecture & Database Schema
 
-Everything technical about the system: how it is put together, why it is put
-together that way, and what is deliberately not solved yet.
-
-For what the product does and how to run it, see the [README](../README.md).
+This document describes how the backend, database, and integrations of Post Pilot work together. It reflects the current state of the code, not aspirational design.
 
 ---
 
-## Contents
+## 1. High-Level Overview
 
-1. [System shape](#system-shape)
-2. [Request lifecycle](#request-lifecycle)
-3. [Authentication](#authentication)
-4. [Identity and roles](#identity-and-roles)
-5. [Data model](#data-model)
-6. [The Publisher seam](#the-publisher-seam)
-7. [LinkedIn publishing pipeline](#linkedin-publishing-pipeline)
-8. [Upload pipeline](#upload-pipeline)
-9. [Scheduling](#scheduling)
-10. [Audit log](#audit-log)
-11. [API reference](#api-reference)
-12. [Frontend](#frontend)
-12b. [Caption assist](#caption-assist)
-12c. [Media storage](#media-storage)
-12d. [Thumbnails](#thumbnails)
-12e. [The conversational composer](#the-conversational-composer)
-13. [Deployment](#deployment)
-14. [Branching](#branching)
-15. [Testing](#testing)
-16. [Security posture](#security-posture)
-17. [Operations](#operations)
+- **Backend:** Python 3.12, Flask (application-factory pattern), SQLAlchemy ORM, APScheduler (in-process job scheduler), gunicorn (single worker in prod), flask-cors.
+- **Frontend:** React + TypeScript + Vite, TanStack Query, Tailwind, React Router.
+- **Database:** SQLite in dev (`data/automation.db`, WAL mode), Postgres (Supabase) in prod via `DATABASE_URL`.
+- **No migration framework** — schema is created/extended at startup via `Base.metadata.create_all()` plus ad-hoc column checks (`inspect()`). `database/schemas.sql` is a hand-maintained reference and is slightly stale versus the live ORM models.
+- **MCP server:** a separate Cloudflare Worker (TypeScript) that lets AI agents (e.g. Claude via GitHub identity) drive the same backend through tool calls.
+
+```
+                     ┌──────────────────────┐
+                     │   Frontend (React)   │
+                     │  Vite/Vercel SPA     │
+                     └──────────┬───────────┘
+                                │ REST (Bearer token)
+                     ┌──────────▼───────────┐
+                     │   Flask Backend      │
+                     │  (backend/app.py)    │
+                     │  Blueprints + APScheduler
+                     └──┬─────┬─────┬────┬──┘
+                        │     │     │    │
+              ┌─────────┘     │     │    └─────────┐
+              ▼               ▼     ▼               ▼
+        SQLite/Postgres   LinkedIn API   LLM Providers   Local/Object Storage
+        (users, posts,    (OAuth+publish) (NIM/Gemini/    (media files)
+         analytics, etc.)                  Claude)
+
+                     ┌──────────────────────┐
+                     │  MCP Server (Worker) │──── GitHub OAuth ──▶ users.github_username
+                     │  Cloudflare/wrangler  │──── calls backend REST API
+                     └──────────────────────┘
+```
 
 ---
 
-## System shape
+## 2. Backend Structure
 
-One Docker image serves both the API and the compiled SPA from a single origin.
+### 2.1 Entry point
 
-```
-                    ┌────────────────────────────────────────┐
-   browser  ───────▶│  Flask  (gunicorn, exactly 1 worker)   │
-                    │                                        │
-                    │  before_request ─ auth gate            │
-                    │        │                               │
-                    │        ├─ /api/*  ── blueprints        │
-                    │        │            routes / auth /    │
-                    │        │            admin / publish    │
-                    │        │                               │
-                    │        └─ everything else ── SPA       │
-                    │                    (index.html)        │
-                    │                                        │
-                    │  APScheduler (in-process)              │
-                    │  Publisher interface                   │
-                    └───────┬────────────────────┬───────────┘
-                            │                    │
-                   ┌────────▼────────┐   ┌───────▼────────┐
-                   │ Supabase        │   │ LinkedIn REST  │
-                   │ Postgres        │   │ API            │
-                   └─────────────────┘   └────────────────┘
-```
+`backend/app.py` → `create_app()`. Registers CORS, security headers, rate limiting, all blueprints, and (when built) serves the compiled React SPA from `frontend/dist` with a catch-all route, so API and frontend can share one origin.
 
-**Why one image rather than separate frontend and backend services.** The API
-contract spans both halves: when a response shape changes, the UI consuming it
-must change in the same commit. Split across deployments there is always a
-window where production is inconsistent, and rolling back fixes only one side.
-Same-origin also means CORS stops applying to the SPA entirely, there is one
-domain to secure and build reputation for, and it fits in one free instance.
-
-**Why exactly one gunicorn worker.** APScheduler runs inside the process. A
-second worker would start a second scheduler, and every scheduled post would
-fire once per worker — publishing duplicates to a real person's feed. This
-constraint is load-bearing; changing `--workers` without moving the scheduler
-out of process is a publishing bug.
-
----
-
-## Request lifecycle
+### 2.2 Directory layout
 
 ```
-request
-  │
-  ├─▶ before_request: enforce_authentication()
-  │     ├─ public path?            → continue
-  │     ├─ valid API key?          → continue as machine caller
-  │     ├─ valid session token?    → load user, continue
-  │     └─ otherwise               → 401 (or 503 if the key is unconfigured)
-  │
-  ├─▶ before_request: log_request()
-  │
-  ├─▶ blueprint route  ── or ──  SPA fallback
-  │
-  └─▶ after_request: log_response()
+backend/
+  app.py                 Flask app factory, CORS, security headers, rate limits, SPA fallback
+  admin_cli.py           CLI for admin ops (GitHub mapping, encrypt LinkedIn tokens, etc.)
+  ai/
+    llm_provider.py      LLMProvider ABC + ClaudeProvider / GeminiProvider / NvidiaNimProvider
+  api/                   Flask blueprints (route handlers)
+  core/
+    agent.py, analytics_engine.py, cache.py, captions.py, composer.py,
+    linkedin_publisher.py, optimal_timing.py, reel_manager.py, scheduler.py, storage.py
+    publishers/          base.py (Publisher ABC), instagram.py (stub), linkedin.py
+  models/                SQLAlchemy ORM models
+  platforms/             platform-specific glue (placeholder)
+  utils/
+    clerk_auth.py, config.py, crypto.py, database.py, encryption.py,
+    http_security.py, linkedin_api.py, logger.py, security.py, timeutil.py
 ```
 
-The auth gate is a global `before_request` hook rather than per-route
-decorators. A decorator has to be remembered on every new endpoint; a hook
-protects anything added later by default. Endpoints opt *out* via an explicit
-allowlist, so forgetting to think about auth fails safe.
+### 2.3 Blueprints and URL prefixes
 
-### SPA fallback
-
-`static_folder` is disabled on the Flask app. Setting it with
-`static_url_path=""` makes Flask register its own `/<path:filename>` rule,
-which matches client-side routes like `/admin` *before* the fallback and 404s
-because no such file exists — breaking every deep link and hard refresh.
-Serving files explicitly keeps routing precedence in one place.
-
-The fallback refuses `/api/*` and `/health` explicitly. Without that, a typo in
-an endpoint path would return `index.html` with status 200, and the browser
-would report a confusing `unexpected token <` JSON parse error instead of a
-clear 404.
-
----
-
-## Authentication
-
-Two credential types are accepted, both compared in constant time via
-`hmac.compare_digest`, both header-only — never query strings, which leak into
-logs, browser history, and referrer headers.
-
-| Type | Header | Who uses it |
-|---|---|---|
-| API key | `Authorization: Bearer <API_ACCESS_KEY>` or `X-API-Key` | scripts, CI, admin tooling |
-| Session token | `Authorization: Bearer <signed token>` | the browser, after sign-in (Clerk or LinkedIn) |
-
-### Clerk sign-in
-
-Clerk is the identity provider the SPA actually shows: one "Sign in" control,
-Clerk's own modal, LinkedIn included as one of Clerk's OAuth providers
-alongside Google/GitHub/Apple/Microsoft. `POST /api/auth/clerk/verify`
-(`backend/utils/clerk_auth.py`) verifies the Clerk session JWT against Clerk's
-own JWKS — never `verify_signature: False` — then mints the exact same
-`make_session_token()` every other sign-in path produces, so nothing
-downstream (roles, `is_active`, audit log, ownership checks, rate limits) had
-to change to support it. See `ADMIN_CLERK_EMAILS` below for how admin status
-is decided.
-
-The direct LinkedIn OAuth *sign-in* endpoint (`/api/auth/linkedin/login`)
-still exists but is no longer wired into the UI — it was a second, separate
-identity path that bypassed Clerk entirely. LinkedIn's OAuth app is still
-used, unchanged, for the thing only it can do: granting `w_member_social`
-publish rights in Setup, once the visitor is already a signed-in account.
-
-**Two Clerk dashboard settings that silently break sign-in and have no code
-fix** — found the hard way, worth checking first if sign-in 404s or bounces
-to `noble-glowworm-....accounts.dev` instead of opening the in-app modal:
-
-1. **Organization Settings → "Force organization selection" must be OFF.**
-   This app doesn't use Clerk's Organizations feature (roles live in
-   `users.role`, not Clerk orgs) — with it on, EVERY sign-in attempt, on
-   every provider, redirects to a hosted "choose an organization" page that
-   this instance's Account Portal has never had deployed, and that page
-   404s. This looks exactly like a broken OAuth provider; it isn't.
-2. **LinkedIn specifically needs "Use custom credentials" enabled**, with
-   this project's own `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET` pasted in
-   and `openid`/`profile`/`email` added under Scopes — unlike Google/GitHub/
-   Microsoft, Clerk has no shared dev-mode credentials for LinkedIn, so the
-   icon renders but 404s until this is filled in. The LinkedIn app also needs
-   Clerk's redirect URL (`https://<your-instance>.clerk.accounts.dev/v1/oauth_callback`,
-   shown on that same dashboard page) added to its own **Authorized redirect
-   URLs** in the LinkedIn developer portal, alongside the existing
-   `/api/auth/linkedin/callback` one — LinkedIn apps support more than one.
-
-### Failing closed
-
-If `API_ACCESS_KEY` is unset, every `/api/*` request returns **503** rather
-than being allowed through. A misconfigured deployment is unavailable rather
-than silently public — the failure mode that gets noticed immediately instead
-of the one that gets noticed in a breach report.
-
-### Public paths
-
-Only three, each for a specific reason:
-
-| Path | Why it must be public |
+| Blueprint (file) | Prefix |
 |---|---|
-| `/health` | uptime probes carry no credentials |
-| `/api/auth/linkedin/login` | the entry point to signing in — the user has no token yet |
-| `/api/auth/linkedin/callback` | LinkedIn redirects the browser here; protected by signed state instead |
+| `api_bp` (`routes.py`) | `/api` |
+| `auth_bp` (`auth_routes.py`) | `/api` |
+| `linkedin_bp` (`linkedin_routes.py`) | `/api/linkedin` |
+| `media_bp` (`media_routes.py`) | `/api/media` |
+| `caption_bp` (`caption_generation_routes.py`) | `/api/captions` |
+| `caption_bp_legacy` (`caption_routes.py`) | `/api/captions` |
+| `post_bp` (`post_routes.py`) | `/api/posts` |
+| `scheduler_bp` (`scheduler_routes.py`) | `/api/scheduler` |
+| `admin_bp` (`admin_routes.py`) | `/api/admin` |
+| `publish_bp` (`publish_routes.py`) | `/api/posts` |
+| `composer_bp` (`composer_routes.py`) | `/api/composer` |
+| `guest_bp` (`guest_routes.py`) | `/api/auth/guest` |
+| `console_bp` (`console_routes.py`) | `/api/console` |
+| `integrations_bp` (`integrations_routes.py`) | `/api/integrations` |
 
-### Session tokens
+Plus `GET /health`, `GET /api/status`, and the SPA catch-all, defined directly in `app.py`.
 
-Stateless and self-verifying:
+### 2.4 Authentication model
 
-```
-token = base64url(payload) . base64url(HMAC-SHA256(payload, SECRET_KEY))
-payload = {"uid": <user id>, "exp": <unix expiry>, "typ": "session", "nonce": ...}
-```
+Every route requires either a bearer token (`Authorization: Bearer <API_ACCESS_KEY>` / `X-API-Key`) or a signed session token, enforced by a global `before_request` hook in `backend/utils/security.py`. This **fails closed** (returns 503) if `API_ACCESS_KEY` is unset. The only public routes are:
+- `GET /health`
+- `GET /api/status`
+- LinkedIn OAuth login/callback (`GET /api/auth/linkedin/login`, `GET /api/auth/linkedin/callback`)
 
-The signature is verified **before** the payload is parsed, so malformed input
-never reaches the JSON decoder. Expiry is checked on every request, and the
-user is re-loaded from the database each time — so deactivating an account
-takes effect immediately rather than when a cached token expires.
+Ownership checks always resolve the acting user from the token, never from the request body. Cross-user access to a resource returns **404**, not 403, to avoid confirming a resource exists.
 
-### The `typ` claim
+### 2.5 Full endpoint list
 
-OAuth state tokens are signed with the same key and the same construction, but
-carry `"typ": "oauth"` and a 10-minute lifetime. Session verification rejects
-anything without `"typ": "session"`.
+**Identity / Auth** (`auth_routes.py`, prefix `/api`)
+- `GET /api/auth/linkedin/login` *(public)*
+- `GET /api/auth/linkedin/start`
+- `POST /api/mcp/link-start`, `POST /api/mcp/authorize-connector`, `POST /api/mcp/verify-connector-grant`
+- `GET /api/auth/linkedin/callback` *(public)*
+- `POST /api/auth/clerk/verify`
+- `GET /api/me`
+- `POST /api/logout`
+- `GET /api/auth/linkedin/status`
+- `GET /api/setup/state`
+- `POST /api/auth/linkedin/disconnect`
 
-Without that claim an OAuth state token — which appears in URLs, browser
-history, and server logs — could be replayed as a session token. The two
-token types are deliberately not interchangeable, and there is a test for it.
+**Guest** (`guest_routes.py`, prefix `/api/auth/guest`)
+- `GET /status`, `POST ""`
 
-### OAuth CSRF
+**LinkedIn OAuth/credentials** (`linkedin_routes.py`, prefix `/api/linkedin`)
+- `POST /connect`, `GET /callback`, `POST /callback`, `GET /status`, `POST /disconnect`, `POST /refresh-token`
 
-The `state` parameter is a signed token carrying the user id and an expiry,
-not a random value stored in a session. That keeps the callback stateless
-while still binding the redirect to the request that started it. A forged or
-expired state is rejected before any token exchange happens.
+**Integrations — per-user LinkedIn app credentials** (`integrations_routes.py`, prefix `/api/integrations`)
+- `GET /linkedin/credentials/status`, `POST /linkedin/credentials`, `DELETE /linkedin/credentials`
 
----
+**Posts — legacy path** (`routes.py`, prefix `/api`)
+- `GET /users/by-github/<username>`, `POST /users`, `GET /users/<id>`, `POST /users/<id>/authenticate`
+- `POST /posts`, `GET /posts/<id>`, `POST /posts/<id>/schedule`, `POST /posts/<id>/schedule-optimal`, `DELETE /posts/<id>`, `DELETE /posts/<id>/delete`
+- `GET /users/<id>/posts`
+- `POST /upload`, `GET /users/<id>/reels`, `DELETE /users/<id>/reels/<filename>`, `GET /users/<id>/reels/<filename>/thumbnail`
+- `GET /users/<id>/analytics`, `POST /users/<id>/analyze`, `GET /users/<id>/optimal-time`
+- `GET /scheduler/status`, `GET /scheduler/jobs`, `GET /scheduler/pending`
+- `POST /queue/add`, `DELETE /queue/<id>`, `GET /stats`
 
-## Identity and roles
+**Posts — current path** (`post_routes.py`, prefix `/api/posts`)
+- `POST ""` (create draft), `POST /<id>/schedule`, `GET ""` (list), `GET /<id>`, `DELETE /<id>`
 
-Two independent sign-in paths, both landing on the same `User` row shape.
-Clerk accounts key on `users.clerk_id` (Clerk's stable user id); accounts that
-signed in directly via the legacy LinkedIn-as-login flow key on
-`users.linkedin_sub` (LinkedIn's stable subject claim). Names and emails
-change on both; neither identifier does.
+**Publishing** (`publish_routes.py`, prefix `/api/posts`)
+- `POST /<id>/publish`, `DELETE /<id>/published` (retract), `POST /<id>/delete`, `PATCH /<id>`
 
-Two roles: `admin` and `operator`. Operators manage their own posts; admins
-additionally manage users and read the audit log.
+**Media** (`media_routes.py`, prefix `/api/media`)
+- `POST /upload`, `GET ""` (list), `DELETE /<media_id>`
 
-### Who becomes an admin
+**Captions** (`caption_generation_routes.py` + legacy `caption_routes.py`, prefix `/api/captions`)
+- `POST /generate`, `GET /status`, `POST /suggest`
 
-Each sign-in path has its own allowlist, checked and **re-asserted on every
-sign-in** — self-healing: if the database is wiped or rebuilt, the right
-person becomes admin again simply by signing in again.
+**Composer** (`composer_routes.py`, prefix `/api/composer`)
+- `GET /status`, `POST /turn`
 
-- **Clerk** — `ADMIN_CLERK_EMAILS`, a comma-separated allowlist of email
-  addresses (Clerk has already verified them, via the OAuth provider or a
-  verified code, so there is no unverified-email path to worry about here).
-- **Legacy LinkedIn login** — `ADMIN_LINKEDIN_SUBS`, a comma-separated
-  allowlist of LinkedIn `sub` values.
+**Scheduler** (`scheduler_routes.py`, prefix `/api/scheduler`)
+- `GET /optimal-times`, `POST /reschedule`, `GET /jobs`, `DELETE /jobs/<job_id>`, `POST /jobs/<job_id>/execute-now`
 
-For each path independently: allowlist set means first-account bootstrap is
-disabled entirely and only listed identities get `admin`; allowlist empty
-means the first account created *on that path* becomes an active admin
-(Clerk accounts are active immediately either way — see below), and everyone
-after is created inactive, pending approval. Convenient for local
-development, and safe because an empty allowlist means nobody is claiming
-ownership yet.
+**Admin — requires role `admin`** (`admin_routes.py`, prefix `/api/admin`)
+- `GET /users`, `POST /users/<id>/role`, `POST /users/<id>/active`, `POST /users/<id>/github`, `DELETE /users/<id>/linkedin-sub`, `POST /users/<id>/backfill-linkedin-sub`, `POST /encrypt-linkedin-tokens`, `GET /audit`, `GET /stats`
 
-Clerk-created accounts skip the pending-approval step Legacy LinkedIn login
-uses: `/api/auth/linkedin/login` is a public, unauthenticated endpoint reachable
-by anyone, so new accounts there default to inactive until an admin approves
-them. Clerk has already gated sign-up itself (email verification or an OAuth
-provider), so its accounts are active on arrival.
+**Console / ops** (`console_routes.py`, prefix `/api/console`)
+- `GET /overview`, `DELETE /guests`, `GET /storage/orphans`, `DELETE /storage/orphans`
 
-### Guard rails
+**Service**
+- `GET /health` *(public)*, `GET /api/status` *(public)*
 
-The admin API refuses to demote the last admin, refuses to deactivate the last
-active admin, and refuses to let an admin deactivate themselves. Each of these
-would otherwise lock everyone out of the admin panel permanently, recoverable
-only by direct database access.
+### 2.6 Frontend structure
 
----
-
-## Data model
-
-**User** — `linkedin_sub` (unique, the login key), `full_name`, `email`,
-`avatar_url`, `role`, `is_active`, `last_seen_at`,
-`linkedin_access_token` (~60-day expiry), `linkedin_refresh_token` (~365-day),
-`linkedin_person_urn`, `instagram_username` (nullable — users need not have
-one).
-
-**Post** — `user_id`, `video_path`, `thumbnail_path`, `video_duration`,
-`video_size`, `caption`, `hashtags`, `platform`, `status`, `scheduled_time`,
-`posted_at`, `linkedin_post_id`, `instagram_post_id`, `video_url`,
-`error_message`, plus engagement counters.
-
-Status flows `draft → scheduled → posted`, with `failed` and `cancelled` as
-terminal states. A retracted post becomes `cancelled` rather than being
-deleted, so the history still records that it was published and then withdrawn.
-
-**AuditLog** — append-only. See [Audit log](#audit-log).
-
-**Analytics** — per-post engagement snapshots, currently seeded rather than
-fetched from LinkedIn.
-
-Schema changes are additive, applied at startup in
-`backend/utils/database.py`. There is no migration tool; adding a nullable
-column is safe, and anything more involved needs a considered migration.
+`frontend/` — React + TypeScript + Vite, TanStack Query, Tailwind, React Router.
+API client modules: `frontend/src/api/{auth,client,schedule,admin,queue,uploadStore,composer,captions,console,validation,types}.ts`.
+Pages: `Compose`, `Queue`, `Analytics`, `Settings`, `Admin`, `Console`, `Docs`, `Setup`, `McpAuthorize`, `McpConnected`, `Landing`.
 
 ---
 
-## The Publisher seam
+## 3. Database Schema
 
-Everything above `backend/core/publishers/` talks to the `Publisher` interface
-and never to a platform SDK.
+### 3.1 `users` (`backend/models/user.py`)
 
-```python
-class Publisher(ABC):
-    def is_connected(self) -> bool: ...
-    def validate_media(self, path) -> tuple[bool, str]: ...
-    def publish(self, video_path, caption, thumbnail_path) -> PublishResult: ...
-    def delete(self, platform_post_id) -> tuple[bool, str]: ...
-    def connection_status(self) -> dict: ...
-```
-
-`get_publisher(user, platform)` resolves an implementation from
-`post.platform`, so adding a platform means adding a class and registering it
-— not editing the scheduler, the routes, or the queue.
-
-This seam is what made the Instagram → LinkedIn pivot survivable. The upload
-pipeline, scheduler, queue, and data model were all reusable; only the layer
-below the interface was thrown away.
-
-### Failures are returned, never raised
-
-`publish()` returns `PublishResult.failure(...)` rather than throwing.
-Publishing fails routinely — expired tokens, rate limits, rejected media — and
-those are ordinary outcomes to record against a post, not exceptional control
-flow. `retryable=True` is set only for genuinely transient conditions (5xx,
-timeouts, rate limits), because it decides whether the scheduler tries again.
-
-### Instagram
-
-`InstagramPublisher` exists and reports `connection_status` as disabled with an
-explanation. It is a placeholder that fails honestly rather than a stub that
-pretends. `instagrapi` was removed entirely, not merely disabled — it logs in
-with a username and password, violates Instagram's Terms of Service, and risks
-account suspension.
-
----
-
-## LinkedIn publishing pipeline
-
-Video posting is a five-step protocol, not a single upload:
-
-```
-1. POST /rest/videos?action=initializeUpload
-      → video URN + a list of byte ranges, each with a pre-signed upload URL
-
-2. For each range:  PUT the exact byte slice to its URL
-      → collect the ETag from every response
-
-3. POST /rest/videos?action=finalizeUpload
-      → submit the ETags, in order, to stitch the parts together
-
-4. Poll  GET /rest/videos/{urn}  until status is AVAILABLE
-      → LinkedIn transcodes asynchronously; posting before this fails
-
-5. POST /rest/posts   with the video URN as content
-      → the new post's URN is returned in the x-restli-id header
-```
-
-Every request carries `X-Restli-Protocol-Version: 2.0.0` and
-`LinkedIn-Version: YYYYMM`. Omitting either produces errors that do not
-mention the missing header.
-
-Media is validated **locally first** — MP4, 3 s to 30 min, 75 KB to 500 MB —
-so an invalid file is rejected in milliseconds rather than after uploading
-hundreds of megabytes and being refused.
-
-Deletion is `DELETE /rest/posts/{urn}`. Both 204 and 404 count as success:
-deletion is idempotent, and the desired end state is "not published", which a
-404 already satisfies.
-
-**Proven live.** On 15 Aug 2026 a real post was published to a personal profile
-(16.2 s end to end, four upload parts) and deleted 47 seconds later. Until
-that run, all of this was tested only against mocks.
-
----
-
-## Upload pipeline
-
-```
-browser                          server
-───────                          ──────
-validate duration + size
-  (fails in ms, no transfer)
-    │
-    ├─ XHR POST /api/upload ────▶ stream body to disk
-    │    with progress events        (never fully buffered in memory)
-    │                                    │
-    │                                    ├─ ffprobe: real duration + codec
-    │                                    │    reject and delete on failure
-    │                                    │
-    │                                    └─ ffmpeg thumbnail
-    │                                         in a background thread
-    ◀────────────────────────────── reel metadata
-```
-
-**XHR rather than `fetch`.** `fetch` exposes no upload-progress events, and a
-progress bar is a requirement for multi-megabyte video. This is the only place
-XHR is used, and it is why the upload path attaches its auth header manually
-instead of going through `apiFetch`.
-
-**Client validation is a courtesy, not a control.** The server re-validates
-everything with `ffprobe` regardless — the browser check exists to save the
-user a pointless transfer, not to protect the server.
-
-**Uploads survive navigation.** Upload state lives in a module-level store
-(`frontend/src/api/uploadStore.ts`) consumed through `useSyncExternalStore`,
-not in component state. Previously, navigating away unmounted the component and
-lost all progress and the result — the XHR kept running, so it looked stalled
-rather than cancelled.
-
----
-
-## Scheduling
-
-APScheduler runs in-process with a Postgres-backed job view. Jobs are
-reconstructed from the database on startup, so a restart does not lose them,
-though timing can drift across a restart.
-
-The scheduler resolves a publisher from `post.platform` and calls the same
-`publish()` used by the publish-now endpoint. There is one implementation of
-"how do we post to LinkedIn", not two that can drift apart.
-
-**On the free tier the instance sleeps after ~15 minutes idle, and a sleeping
-process fires nothing.** Publishing at the requested minute needs an always-on
-instance — a paid plan or an external pinger.
-
-What the process does guarantee is that a missed post is never lost silently.
-APScheduler's job store is in memory, so the Post table is the durable record
-and every process start rebuilds the timers from it (`_restore_scheduled_jobs`).
-A post that came due while nothing was running is published on the next start
-if it is inside `SCHEDULER_MISFIRE_GRACE_SECONDS` (default one hour), and
-failed with the reason and the delay otherwise, so it shows up on the Queue
-instead of sitting at `scheduled` forever.
-
-Three things had to be true for that to work, and none of them were:
-
-- **The scheduler has to start with the process.** `get_scheduler()` is lazy
-  and every caller is a request handler, so a process nobody visited restored
-  nothing and watched no clock. `create_app()` now starts it.
-- **The grace window has to outlast a restart.** It was 60 seconds, which no
-  restart is ever inside, so every restored job was discarded as a misfire —
-  the recovery path was disabled by its own configuration.
-- **The trigger has to carry a timezone.** `scheduled_time` is a naive column
-  holding the user's local wall clock (the write path localises, and Postgres
-  drops the offset). Passed to APScheduler unlocalised it is read in the
-  container's zone instead, publishing a restored post 5h30m late for
-  Asia/Kolkata. This one was invisible while the grace window discarded the
-  jobs before they could fire at the wrong hour.
-
----
-
-## Audit log
-
-Append-only. Never updated, never deleted.
-
-Two deliberate choices:
-
-- **`actor_name` is denormalized** and `actor_id` is not a foreign key. When a
-  user is deleted, the log still says who did it. A foreign key would either
-  block the deletion or cascade away the evidence.
-- **Write failures are swallowed.** A failed audit write must never fail the
-  publish it was recording. Losing a log line is bad; refusing to publish
-  because logging failed is worse.
-
-Recorded actions include `user.signed_up`, `user.signed_in`, `user.signed_out`,
-`post.published`, `post.publish_failed`, `post.deleted`, and role/activation
-changes.
-
----
-
-## API reference
-
-Every route requires a bearer token unless marked **public**. Generated from
-the live URL map — this is the authoritative list.
-
-### Identity
-
-| Method | Path | Notes |
+| Column | Type | Notes |
 |---|---|---|
-| `GET` | `/api/auth/linkedin/login` | **public** — starts sign-in |
-| `GET` | `/api/auth/linkedin/callback` | **public** — verifies signed state, exchanges code |
-| `GET` | `/api/auth/linkedin/start` | begins authorization for an existing user |
-| `GET` | `/api/auth/linkedin/status` | connection state, token expiry |
-| `POST` | `/api/auth/linkedin/disconnect` | clears tokens **locally only** — does not revoke at LinkedIn |
-| `GET` | `/api/me` | current user identity |
-| `POST` | `/api/logout` | client-side sign-out; stateless tokens leave nothing to revoke |
+| id | Integer PK | |
+| linkedin_sub | String(255), unique, indexed, nullable | legacy login key (LinkedIn OIDC `sub`) |
+| clerk_id | String(255), unique, indexed, nullable | Clerk identity |
+| github_username | String(255), unique, indexed, nullable | MCP/GitHub identity mapping |
+| full_name | String(255), nullable | |
+| email | String(255), nullable, indexed | |
+| avatar_url | String(1000), nullable | |
+| role | String(50), default `"operator"`, indexed | `"admin"` \| `"operator"` |
+| last_seen_at | DateTime, nullable | |
+| instagram_username | String(255), unique, indexed, nullable | |
+| instagram_session_id | String(500), nullable | |
+| instagram_user_id | String(255), nullable | |
+| instagram_connected | Boolean, default False | |
+| linkedin_email | String(255), nullable | |
+| linkedin_session_id | String(500), nullable | |
+| linkedin_connected | Boolean, default False | |
+| linkedin_person_urn | String(255), nullable | e.g. `urn:li:person:abc123` |
+| linkedin_access_token_encrypted | Text, nullable | Fernet-encrypted |
+| linkedin_refresh_token_encrypted | Text, nullable | Fernet-encrypted |
+| linkedin_access_token | String(2000), nullable | legacy plaintext fallback |
+| linkedin_refresh_token | String(2000), nullable | legacy plaintext fallback |
+| linkedin_token_expires_at | DateTime, nullable | |
+| linkedin_scope | String(500), nullable | granted OAuth scopes |
+| linkedin_own_client_id | String(255), nullable | per-user "bring your own app" |
+| linkedin_own_client_secret_encrypted | String(1000), nullable | Fernet-encrypted |
+| is_guest | Boolean, default False, nullable | sandbox accounts — never admin/publish |
+| timezone | String(50), default `"Asia/Kolkata"` | |
+| account_name | String(255), nullable | |
+| is_active | Boolean, default True | |
+| preferences | JSON | flags: auto_analyze_engagement, analysis_frequency_days, enable_caption_generation, enable_hashtag_recommendations, enable_comment_monitoring, enable_auto_reply |
+| created_at / updated_at | DateTime | |
+| last_login | DateTime, nullable | |
+| instagram_connected_at / linkedin_connected_at | DateTime, nullable | |
 
-### Posts and publishing
+**Relationships:** `posts` (1:N → Post, cascade delete-orphan), `analytics` (1:N → Analytics, cascade), `linkedin_credential` (1:1 → LinkedInCredential, cascade).
 
-| Method | Path | Notes |
+### 3.2 `posts` (`backend/models/post.py`)
+
+| Column | Type | Notes |
 |---|---|---|
-| `POST` | `/api/posts` | create a draft. `platform` defaults to `linkedin` |
-| `GET` | `/api/posts/<id>` | fetch one |
-| `DELETE` | `/api/posts/<id>` | delete the local record |
-| `POST` | `/api/posts/<id>/publish` | **publish now.** 502 on upstream failure, 409 if already posted |
-| `DELETE` | `/api/posts/<id>/published` | retract from the platform; marks the post `cancelled` |
-| `POST` | `/api/posts/<id>/schedule` | schedule for a time |
-| `POST` | `/api/posts/<id>/schedule-optimal` | schedule at a computed best time |
-| `GET` | `/api/users/<id>/posts` | list a user's posts |
+| id | Integer PK | |
+| user_id | Integer, FK → `users.id`, not null, indexed | ON DELETE CASCADE |
+| media_file_id | Integer, FK → `media_files.id`, nullable | |
+| video_path | String(500), not null | |
+| video_url | String(500), nullable | |
+| thumbnail_path | String(500), nullable | |
+| video_duration | Float, nullable | |
+| video_size | Integer, nullable | |
+| caption | Text, nullable | |
+| hashtags | String(500), nullable | comma-separated |
+| ai_generated_caption / ai_generated_hashtags | Boolean, default False | |
+| status | String(50), default `"draft"`, indexed | enum: `draft, queued, scheduled, posted, failed, cancelled` |
+| platform | String(50), default `"instagram"` | enum: `instagram, linkedin, both` |
+| scheduled_time | DateTime, nullable, indexed | naive, user's local wall clock |
+| posted_at | DateTime, nullable | |
+| instagram_post_id / linkedin_post_id | String(255), nullable | |
+| views / likes / comments / shares | Integer, default 0 | |
+| engagement_rate | Float, nullable | |
+| post_metadata (DB column `metadata`) | JSON, default `{}` | renamed attribute to avoid SQLAlchemy reserved name |
+| error_message | Text, nullable | |
+| retry_count | Integer, default 0 | |
+| max_retries | Integer, default 3 | |
+| job_id | String(255), unique, nullable | APScheduler job id |
+| created_at / updated_at | DateTime | |
 
-Publish and retract enforce ownership from the **session**, never from the
-request body. A post belonging to another user returns **404, not 403** —
-confirming existence would let post ids be enumerated.
+**Indexes:** `idx_posts_user_id`, `idx_posts_status`, `idx_posts_scheduled_time`, `idx_posts_job_id`.
+**Relationships:** `user` (N:1), `media_file` (N:1).
 
-### Media
+### 3.3 `analytics` (`backend/models/analytics.py`)
 
-| Method | Path | Notes |
-|---|---|---|
-| `POST` | `/api/upload` | multipart; streams to disk, validates, thumbnails |
-| `GET` | `/api/users/<id>/reels` | list uploaded reels |
-| `GET` | `/api/users/<id>/reels/<filename>/thumbnail` | path-traversal guarded |
-
-### Queue and scheduler
-
-| Method | Path |
+| Column | Type |
 |---|---|
-| `POST` | `/api/queue/add` |
-| `DELETE` | `/api/queue/<id>` |
-| `GET` | `/api/scheduler/jobs` · `/api/scheduler/pending` · `/api/scheduler/status` |
+| id | Integer PK |
+| user_id | Integer, FK → `users.id`, not null, indexed (ON DELETE CASCADE) |
+| analysis_type | String(50), default `"hourly"` |
+| platform | String(50), default `"instagram"` |
+| analysis_date | DateTime, default now |
+| best_posting_hours / best_posting_days | JSON |
+| hourly_analytics / daily_analytics / weekly_analytics | JSON |
+| total_posts_analyzed | Integer, default 0 |
+| average_likes / average_comments / average_shares / average_engagement_rate | Float, nullable |
+| trending_hashtags / trending_content_themes | JSON |
+| posting_frequency_optimal | Integer, nullable |
+| peak_engagement_hour / peak_engagement_day / slowest_hour / slowest_day | Integer, nullable |
+| follower_growth_rate / engagement_growth_rate | Float, nullable |
+| data_source | String(100), default `"instagram_api"` |
+| last_analysis_posts_count | Integer, default 0 |
+| created_at / updated_at / last_calculated_at | DateTime |
 
-### Admin — all require the `admin` role
+**Index:** `idx_analytics_user_id`. **Relationship:** `user` (N:1).
 
-| Method | Path | Notes |
+### 3.4 `audit_log` (`backend/models/audit.py`) — append-only
+
+| Column | Type | Notes |
 |---|---|---|
-| `GET` | `/api/admin/users` | users with post counts |
-| `POST` | `/api/admin/users/<id>/role` | refuses to demote the last admin |
-| `POST` | `/api/admin/users/<id>/active` | refuses self-deactivation |
-| `GET` | `/api/admin/audit` | default 100, max 500 |
-| `GET` | `/api/admin/stats` | fleet-wide counts |
+| id | Integer PK | |
+| actor_id | Integer, nullable, indexed | **not a FK** — deliberately denormalized so entries survive user deletion |
+| actor_name | String(255), nullable | denormalized |
+| action | String(100), not null, indexed | e.g. `user.signed_up`, `post.published`, `post.publish_failed`, `post.deleted` |
+| target | String(255), nullable | e.g. `post:42` |
+| detail | Text, nullable | |
+| ip_address | String(64), nullable | |
+| created_at | DateTime, not null, indexed | |
 
-### Service
+Writes swallow their own exceptions (`record()` helper) so a logging failure never blocks the action being audited.
 
-| Method | Path | Notes |
+### 3.5 `media_files` (`backend/models/media_file.py`)
+
+| Column | Type | Notes |
 |---|---|---|
-| `GET` | `/health` | **public** — uptime probe |
-| `GET` | `/api/status` | reports the database **dialect only**, never the URL |
-| `GET` | `/api/stats` · `/api/users/<id>/analytics` · `/api/users/<id>/optimal-time` | |
-| `POST` | `/api/users/<id>/analyze` | recompute analytics |
+| id | Integer PK | |
+| user_id | Integer, FK → `users.id`, not null, indexed | |
+| filename | String(255), not null | |
+| file_size_bytes | Integer, not null | |
+| media_type | String(50), not null | `'video'` \| `'image'` |
+| mime_type | String(100), not null | |
+| file_extension | String(10), not null | |
+| storage_path | String(500), not null | `/user_{id}/{uuid}.ext` |
+| storage_url | String(1000), nullable | |
+| storage_service | String(50), nullable | `'s3'` \| `'local'` |
+| duration_seconds | Numeric(10,2), nullable | |
+| width / height | Integer, nullable | |
+| thumbnail_url | String(1000), nullable | |
+| upload_completed_at | DateTime, not null | |
+| is_deleted | Boolean, default False, indexed | soft delete |
+| deleted_at | DateTime, nullable | |
+| expires_at | DateTime, default `now+30d`, indexed | |
+| created_at | DateTime, not null, indexed | |
 
-### Legacy
+**Relationships:** `user` (backref `media_files`), `posts` (1:N → Post via `Post.media_file_id`).
 
-`POST /api/users` and `POST /api/users/<id>/authenticate` predate LinkedIn SSO
-and belong to the Instagram era. `authenticate` reports unavailable because
-`instagrapi` is gone. They are candidates for removal — sign-in is
-`/api/auth/linkedin/login`.
+### 3.6 `linkedin_credentials` (`backend/models/linkedin_credential.py`)
 
----
-
-## Frontend
-
-React + TypeScript + Vite, TanStack Query for server state, Tailwind for
-styling, React Router for navigation.
-
-### Design system — violet / white / black
-
-Structure, type scale and surface treatment are modelled on render.com; the
-accent is the project's own violet, taken from `frontend/public/favicon.svg`.
-Four rules, all enforced by `src/index.css` and `src/ui.ts`:
-
-- **Zero border radius.** Nothing is rounded except dots and avatars. There is
-  no radius token because there is no radius.
-- **Flat surfaces, hairline borders.** `#0D0D0D` cards on a `#0A0A0A` page,
-  separated by 1px `#272727` rules. No glass, no backdrop blur, no shadows.
-- **The primary button is white with black text.** Violet is an accent, never
-  a call to action.
-- **Green and red appear in exactly one place**: the ring around the
-  avatar, showing whether LinkedIn is connected. It is the one convention
-  nobody has to be taught, and it is never the only carrier — the account
-  menu says it in words and the button has a screen-reader label.
-- **Display type is light (300)**, large and tightly tracked — 80px on the
-  landing hero, 40px on page titles. Body is 16–18px at 1.6.
-
-`src/ui.ts` holds the twelve class-string recipes (buttons, fields, banners,
-type) every screen shares. Add a recipe there rather than re-deriving one.
-
-**Typography is substituted.** render.com uses Roobert and PP Neue Montreal,
-both commercially licensed and unavailable to this project. General Sans and
-Switzer stand in at matching size, weight and tracking, loaded from Fontshare
-(`api.fontshare.com`) — a third-party runtime dependency. If it is slow or
-blocked the page falls back to the system sans and the layout holds, but the
-design does not. Self-host the two woff2 files under `frontend/public/fonts/`
-to remove the dependency.
-
-**Status colour is the one place the palette bends.** Six `PostStatus` values
-collapse to violet, white and black by leaning on fill strength and border
-style — draft and queued outline in grey and white, scheduled tints violet,
-posted fills it, cancelled goes dashed. `failed` keeps a hue of its own
-(`--color-danger`), because surfacing a broken post is the reason the Queue
-screen exists and a monochrome failure does not catch the eye.
-
-```
-src/api/
-  auth.ts          apiFetch — attaches the token, clears it on 401
-  client.ts        status, user, analytics, uploadReel (XHR)
-  schedule.ts      reels, posts, scheduling, publish, retract
-  admin.ts         user management, audit
-  queue.ts         queue views
-  uploadStore.ts   upload state that outlives components
-  validation.ts    client-side pre-flight
-  types.ts
-src/pages/         Upload, Schedule, Queue, Analytics, Settings, Admin
-src/components/    Login, shared query states, layout
-```
-
-### Every request must go through `apiFetch`
-
-`apiFetch` attaches the session token and clears it on 401. A raw `fetch` call
-returns 401 with no explanation to the user.
-
-**This has been the single most common bug in the codebase** — it broke
-`client.ts` (uploads, analytics, settings, status) and then `schedule.ts`
-(the entire Schedule page) on separate occasions. The upload path is the one
-legitimate exception, because it needs XHR for progress events; it sets the
-header manually and reads the same `localStorage` key (`smm.session`).
-
-When adding an API module, route it through `apiFetch` before writing anything
-else.
-
----
-
-## Caption assist and the LLM provider seam
-
-Three LinkedIn captions for a reel, written from a one-line brief the operator
-types.
-
-**It does not watch the video, and that is the design.** The server knows a
-filename, a duration, a size and one thumbnail frame. A single frame of a
-talking-head reel is a person at a desk, and captioning from that alone
-produces confident generic filler — worse than nothing in a tool whose pitch
-is professional publishing. So the brief is the source of truth, the thumbnail
-is passed as weak context for setting and tone, and the system prompt forbids
-inventing specifics the brief does not contain. A caption that states a number
-nobody gave it publishes a false claim under a real person's name.
-
-Real video understanding needs audio transcription. ffmpeg is already in the
-image but no transcription model is — a separate dependency, cost and latency
-decision, not something to smuggle in behind a button.
-
-**The model is swappable.** `backend/ai/llm_provider.py` defines an abstract
-`LLMProvider` with one implementation per backend — `ClaudeProvider`,
-`GeminiProvider`, `NvidiaNimProvider` — and `get_provider()` picks one from
-`LLM_PROVIDER`. `captions.py` and `composer.py` call the provider interface
-only; neither imports a vendor SDK directly.
-
-| | |
-|---|---|
-| `LLM_PROVIDER` | `nvidia` (default), `gemini`, or `claude` |
-| NVIDIA | `meta/muse-glimmer-30b` via NVIDIA NIM's OpenAI-compatible endpoint (`integrate.api.nvidia.com/v1`), reusing the `openai` SDK rather than a bespoke client |
-| Gemini | `gemini-pro-latest` via `google-generativeai` |
-| Claude | `claude-haiku-4-5` for captions, `claude-opus-5` for the composer |
-| Output | structured JSON — three `{angle, text}` objects — enforced by a schema where the provider supports one, and by prompt instruction plus a parse check where it does not |
-| Vision | the reel's thumbnail as a base64 image, when one exists |
-
-One real bug from bringing NVIDIA online: Muse Glimmer's reasoning parser
-spends part of the token budget internally before emitting the JSON body, and
-the default 2048-token cap truncated the response mid-string. Caption
-generation raised its ceiling to 8192 and now checks `finish_reason == "length"`
-explicitly rather than handing a half-formed JSON blob to `json.loads`.
-
-Three switches predated the feature and were wired to nothing:
-`Post.ai_generated_caption`, the `enable_caption_generation` user preference,
-and the active provider's API key. All three now mean something — the flag and
-a non-placeholder key gate the endpoint, and the column records whether a
-caption was drafted or typed. Editing a drafted caption clears the flag: at
-that point it is the operator's caption.
-
-**Keys are passed explicitly**, never left to an SDK's own environment lookup.
-`CLAUDE_API_KEY` is the setting name but the Anthropic SDK reads
-`ANTHROPIC_API_KEY`; relying on that fails with an authentication error that
-points at Anthropic rather than at the unset config value. Same reasoning for
-`GEMINI_API_KEY` and `NVIDIA_API_KEY`.
-
----
-
-## Media storage
-
-Reels live under `REELS_FOLDER/<user_id>/`, and they **survive a sign-out**.
-Nothing has ever deleted them on logout, and the folder is keyed by the
-database user id, which comes from LinkedIn's `sub` and is stable across
-sessions — sign out, sign back in, same folder. That is the sort of property
-that holds right up until someone adds a cleanup call, so there is a test
-asserting it.
-
-`backend/core/storage.py` is the seam for moving them somewhere real:
-
-| | |
-|---|---|
-| `MediaStore` | the five operations the app performs on a user's media |
-| `LocalMediaStore` | disk under `REELS_FOLDER`. The only backend implemented |
-| `ObjectMediaStore` | documented stub for S3 / R2 / GCS. Raises with instructions rather than silently returning nothing |
-| `MEDIA_BACKEND` | `local` (default) or `object` |
-
-Switching to object storage is: implement five methods, add the SDK, set the
-env var. Nothing above the store changes.
-
-**The awkward part is stated rather than hidden.** ffmpeg, ffprobe and the
-LinkedIn uploader take filesystem paths, not byte streams. So the interface
-has `local_path()` — a context manager that yields a real path, trivially for
-local disk and via a download-then-delete for a remote store. Every caller
-that hands a file to a subprocess goes through it, which means a remote
-backend has exactly one place to implement rather than a dozen call sites to
-hunt down.
-
-Path containment lives in the store too. Four routes each carried their own
-copy of resolve-then-check-`is_relative_to`; now there is one, and a filename
-that tries to walk out of a user's folder is refused in a single place.
-
-> **Both singletons rebuild when config changes.** `get_media_store()` and
-> `get_reel_manager()` used to pin whichever `REELS_FOLDER` was set when the
-> first caller arrived. Invisible in production, where the value never moves,
-> and a 404 with no explanation the moment one reader re-read the setting and
-> another did not. Constructing either is a couple of mkdirs.
-
----
-
-## Thumbnails
-
-The old behaviour was frame zero. Reels routinely fade in from black, so that
-produced a black thumbnail: a real frame from the video, useless as a preview,
-and the first thing a reviewer sees in the Queue.
-
-Now five frames are sampled with the first and last tenth trimmed — openings
-fade, endings freeze on a card — and each is scored on two cheap signals:
-
-- **Detail**, the standard deviation of the greyscale histogram. A title card
-  or a blank wall has almost none; a face or a slide has plenty.
-- **Exposure**, distance from mid-grey. A fade-to-black and a blown-out flash
-  are both far from the middle and both bad thumbnails.
-
-Detail carries 70% of the weight, because a slightly dim frame with a person
-in it beats a perfectly exposed empty wall every time. Both come out of the
-256-bucket histogram, so the cost is independent of frame size.
-
-If every candidate fails to extract — a corrupt file, a codec ffmpeg will not
-decode — it falls back to frame zero, so a broken sampler can never cost a
-thumbnail the old code would have produced. `regenerate_thumbnail(path, ts)`
-takes an explicit timestamp for a manual override.
-
-With no duration available (no ffprobe) there is nothing to space out, so it
-degrades to the single frame at zero rather than guessing at offsets that may
-not exist.
-
----
-
-## The conversational composer
-
-A popover on **New post** (`/compose`), not a page of its own. Say "post the
-OAuth reel tomorrow at 9" and watch it choose a reel, write a caption and
-propose a time, live, in that screen's own Step 1/2/3 fields. If something is
-genuinely missing it asks for one thing rather than presenting a form.
-
-It used to be a standalone `/assistant` route with its own draft summary
-panel. That meant a context switch away from the page the person had already
-started on, and a second "here's what's about to be posted" surface to keep
-in sync with the real one. Both problems went away by making the popover write
-directly into Compose's own state — `reelsQuery`, `caption`, `timing`,
-`when` — as each turn lands, and by closing itself automatically once the
-draft is ready (reel, caption and time all set) rather than waiting to be
-dismissed. `/assistant` now redirects to `/compose`, the same way the old
-`/upload` and `/schedule` paths do.
-
-### The model cannot publish
-
-There is no publish tool on this loop and there should never be one. The three
-tools — `choose_reel`, `set_caption`, `set_schedule` — are pure edits to a JSON
-draft. Nothing on the path writes to the database, calls LinkedIn, or arms a
-job.
-
-The reason is not caution for its own sake. The model's input contains text
-other people can influence — a brief, a filename, a transcript later — and the
-output goes out under a real name on a professional profile. An autonomous
-publish tool turns "summarise this reel" into "post whatever the description
-tells you to post", and no prompt reliably prevents that.
-
-So the draft is turned into a post by the browser calling the same
-create/schedule/publish endpoints the manual screen uses, when a human presses
-the button. One code path to publishing, and it always starts with a click.
-Two tests assert the tool list and the routing table stay clean, so adding an
-action tool later means reading this first.
-
-### Shape
-
-| | |
-|---|---|
-| Model | whichever `LLM_PROVIDER` is active — see [Caption assist and the LLM provider seam](#caption-assist-and-the-llm-provider-seam) — `claude-opus-5` at effort `low` when on Claude |
-| Loop | server-side; the tools only mutate a draft, so round-tripping each to the browser buys nothing |
-| State | stateless endpoint. Transcript and draft go up every turn |
-| Ceiling | four tool rounds, then it returns the partial draft rather than spinning |
-| Frontend | `AssistantPanel.tsx`, opened from a trigger on `Compose.tsx`; applies each turn's draft via a callback rather than owning its own review surface |
-
-Statelessness matches the rest of the app — a signed session token and no
-server-side session store — and avoids a conversations table whose retention
-nobody has decided.
-
-A proposed time in the past is refused inside the tool, where the model can
-still fix it, rather than being passed to the schedule endpoint to be refused
-there.
-
-On NVIDIA, tool calls come back in OpenAI's function-calling shape rather than
-Anthropic's, and Gemini's function-declaration schema rejects the
-`additionalProperties` keyword Claude's tool schemas use outright — both
-providers convert the same `TOOLS` list defined once in `composer.py` rather
-than maintaining three copies of it.
-
----
-
-## Deployment
-
-| Layer | Where | Notes |
+| Column | Type | Notes |
 |---|---|---|
-| Frontend (SPA) | Vercel | built from `frontend/`, static |
-| API | **run locally** — `python -m backend.app` | not deployed at the moment |
-| Database | Supabase Postgres, Singapore | free, no expiry |
-| Media | local filesystem | lost when the working directory is cleaned |
+| id | Integer PK | |
+| user_id | Integer, FK → `users.id`, unique, not null, indexed | 1:1 with User |
+| access_token_encrypted | String(2000), not null | Fernet AES-128 |
+| refresh_token_encrypted | String(2000), not null | Fernet AES-128 |
+| linkedin_person_urn | String(255), nullable | |
+| linkedin_account_name | String(255), nullable | |
+| linkedin_profile_url | String(500), nullable | |
+| token_expires_at | DateTime, nullable | |
+| last_refreshed_at | DateTime, nullable | |
+| refresh_count | Integer, default 0 | |
+| is_connected | Boolean, default True, indexed | |
+| connection_verified_at | DateTime, nullable | |
+| created_at / updated_at | DateTime | |
 
-**The backend is not hosted.** `render.yaml` is commented out in full rather
-than deleted — strip the leading `# ` from every line to restore it. Nothing
-in the repo carries Render credentials; the values it referenced were always
-dashboard-side and are not in git.
+**Relationship:** `user` (1:1 back to `User.linkedin_credential`).
 
-Two things follow from the split that did not apply when one image served
-both halves:
+> ⚠️ **Note:** This table appears to be a newer, parallel credential store to the encrypted LinkedIn token columns already present on `users`. Both currently exist in the codebase — confirm which one is actually wired into the live auth/publish flow before treating both as canonical, and consider consolidating.
 
-- **CORS is live again.** The SPA is on a different origin from the API, so
-  the Vercel URL has to be in `CORS_ORIGINS` or every request is blocked.
-- **The SPA needs to be told where the API is.** Set `VITE_API_URL` at build
-  time on Vercel; empty means same-origin, which is no longer true.
+### 3.7 Views (from `database/schemas.sql` — may be stale)
 
-A browser on an HTTPS Vercel page calling `http://localhost:5000` is allowed
-in Chrome and Firefox (localhost counts as a trustworthy origin) but blocked
-in Safari. A tunnel — ngrok, cloudflared — is the way round it.
+- `vw_recent_posts` — joins `posts` + `users`, ordered by `created_at desc`.
+- `vw_performance_by_hour` — posts grouped by `strftime('%H', posted_at)` with average engagement.
 
-### The image
+### 3.8 Entity-relationship diagram
 
-Multi-stage. Node 20 builds the SPA; a Python 3.12 runtime installs
-dependencies, copies the build output, and runs gunicorn. ffmpeg is installed
-in the runtime stage — without it, thumbnails and duration validation silently
-degrade, which is exactly what happened before the move to Docker.
+```mermaid
+erDiagram
+    USERS ||--o{ POSTS : "owns (CASCADE)"
+    USERS ||--o{ ANALYTICS : "owns (CASCADE)"
+    USERS ||--o| LINKEDIN_CREDENTIALS : "owns (CASCADE)"
+    USERS ||--o{ MEDIA_FILES : owns
+    MEDIA_FILES ||--o{ POSTS : "attached to (nullable FK)"
 
-Layer order puts dependency manifests before source, so a code change does not
-reinstall everything.
+    USERS {
+        int id PK
+        string linkedin_sub UK "nullable"
+        string clerk_id UK "nullable"
+        string github_username UK "nullable"
+        string email
+        string role "admin | operator"
+        bool is_guest
+        bool linkedin_connected
+        text linkedin_access_token_encrypted
+        text linkedin_refresh_token_encrypted
+        json preferences
+    }
 
-### Environment
+    POSTS {
+        int id PK
+        int user_id FK
+        int media_file_id FK "nullable"
+        text caption
+        string status "draft/queued/scheduled/posted/failed/cancelled"
+        string platform "instagram/linkedin/both"
+        datetime scheduled_time
+        string linkedin_post_id
+        string job_id UK "APScheduler id"
+        int retry_count
+    }
 
-Secrets live in a local `.env`, which is gitignored and never committed.
+    ANALYTICS {
+        int id PK
+        int user_id FK
+        string analysis_type
+        json best_posting_hours
+        float average_engagement_rate
+        int peak_engagement_hour
+    }
 
-Required: `DATABASE_URL`, `API_ACCESS_KEY`, `SECRET_KEY`, `LINKEDIN_CLIENT_ID`,
-`LINKEDIN_CLIENT_SECRET`, `LINKEDIN_REDIRECT_URI`, `CORS_ORIGINS`,
-`ADMIN_LINKEDIN_SUBS`, `TIMEZONE`.
+    MEDIA_FILES {
+        int id PK
+        int user_id FK
+        string storage_path
+        string media_type "video | image"
+        bool is_deleted "soft delete"
+        datetime expires_at
+    }
 
-> Restart the process after changing `.env` — settings are read at startup, so
-> an edited value has no effect until then. A rotation that appears successful
-> but has not been picked up is worse than no rotation, because it is believed.
+    LINKEDIN_CREDENTIALS {
+        int id PK
+        int user_id FK UK "1:1"
+        string access_token_encrypted
+        string refresh_token_encrypted
+        bool is_connected
+        datetime token_expires_at
+    }
 
----
-
-## Branching
-
-| Branch | Purpose | Deploys |
-|---|---|---|
-| `main` | production — keep green | automatically, on every push |
-| `dev` | integration | nothing |
-| `design` | frontend design work | nothing — merged to `main` when green |
-
-Before merging to `main`:
-
-```bash
-pytest tests/ -q
-cd frontend && npx tsc --noEmit && npx vitest run && npm run build
+    AUDIT_LOG {
+        int id PK
+        int actor_id "NOT a FK - denormalized, survives user deletion"
+        string action
+        string target
+        datetime created_at
+    }
 ```
 
-`main` deploys straight to production, so a red build there is a live outage
-waiting on a fix.
+`AUDIT_LOG` has no relationship line: `actor_id` is deliberately not a foreign key, so audit entries outlive the users they describe.
 
-**Running the backend gate takes two workarounds** — neither is a code
-problem, but both stop a fresh machine cold:
+### 3.9 Cascade summary (text form)
 
-- `requirements-dev.txt` will not install on Python 3.14: `psycopg2-binary`
-  has no wheel for it and the source build fails. Install the rest without it
-  (the suite does not touch Postgres), or use Python 3.12.
-- Settings validation requires `CLAUDE_API_KEY`, `INSTAGRAM_USERNAME` and
-  `INSTAGRAM_PASSWORD` to be set or 65 tests error at collection. Use the same
-  placeholders the commented-out `render.yaml` documents:
-
-```bash
-CLAUDE_API_KEY=sk-ant-placeholder-not-used-in-v1 \
-INSTAGRAM_USERNAME=your_instagram_username \
-INSTAGRAM_PASSWORD=your_instagram_password \
-python -m pytest tests/ -q
+```
+users (1) ──< posts (N)            ON DELETE CASCADE
+users (1) ──< analytics (N)        ON DELETE CASCADE
+users (1) ──1 linkedin_credentials ON DELETE CASCADE
+users (1) ──< media_files (N)
+media_files (1) ──< posts (N)      posts.media_file_id (nullable)
+audit_log                          standalone, actor_id NOT a FK (denormalized)
 ```
 
-**Parallel sessions.** Two Claude sessions have worked on this repo
-concurrently with a file-ownership split — backend, API client modules,
-Upload and Schedule pages on one side; app shell, components, and the
-Analytics, Settings, Queue, Admin, Login pages on the other. When a change
-crosses that boundary, agree the response shape first and build both sides to
-it.
-
-**Rollback.** Vercel keeps every previous frontend deployment and can promote
-one instantly, which is the fastest way out of a broken UI. The backend runs
-locally, so rolling it back is `git checkout` and a restart. For a permanent
-fix, `git revert` on `main`.
-
 ---
 
-## Testing
+## 4. External Integrations
 
-212 backend, 38 frontend.
-
-Backend coverage concentrates on what is genuinely risky:
-
-- **LinkedIn publisher (27)** — byte-range slicing, ETag collection quoted and
-  unquoted, required headers, validation before any network call, retryable
-  versus permanent failure classification
-- **Identity (21)** — token round-trip, forged signatures, expiry, the
-  `typ: session` claim rejecting OAuth state, immediate effect of
-  deactivation, allowlist self-healing, last-admin protection
-- **Publish routes (11)** — cross-user publish and delete refused, failure
-  marks the post failed, double-publish refused, missing file fails before any
-  platform call
-- **SPA serving (9)** — deep links return `index.html`, unknown `/api` routes
-  return JSON 404, the auth gate is not bypassed by the catch-all
-- **Secret leaks (6)** — no response echoes the database password, API key,
-  LinkedIn secret, or signing key; a rejected key is not reflected back
-
-The last group exists because `/api/status` was found returning the raw
-`DATABASE_URL`, password included. Those tests assert on response *shape* —
-no `@`, no `://` in the reported database value — so they fail for any DSN
-rather than one known password.
-
-**Mocks are not proof.** The publisher had 27 passing tests while never having
-made a real API call, and terminal tests using the API key passed while every
-authenticated call from the browser was broken. Both classes of bug were found
-by exercising the real path.
-
----
-
-## Security posture
-
-### Solved
-
-- No passwords anywhere; OAuth 2.0 only, scoped to `w_member_social`
-- Every route authenticated by default, failing closed when misconfigured
-- Constant-time credential comparison, header-only
-- Signed, expiring OAuth state with a type claim preventing replay as a session
-- CORS restricted to configured origins. A `*` is refused outright, and so is
-  a `localhost` origin when `FLASK_ENV=production` — both were previously
-  reachable by editing one environment variable
-- Security headers on every response, including errors and the SPA: CSP with
-  `script-src 'self'` and `frame-ancestors 'none'`, HSTS in production only,
-  `nosniff`, `Referrer-Policy`, `Permissions-Policy`. Mirrored in
-  `frontend/vercel.json`, because the deployed SPA is served by Vercel and
-  never passes through Flask; a test asserts the two stay identical
-- Rate limits on the endpoints that cost something: guest sign-in (a row and a
-  directory per call), uploads (a large write plus ffmpeg), and the two model
-  endpoints (real money per call)
-- Dependencies clean under `pip-audit`; Flask, Werkzeug, flask-cors, gunicorn
-  and python-dotenv upgraded past known CVEs
-- Ownership enforced from the session; cross-user access returns 404
-- Admin actions guarded against self-lockout
-- Append-only audit trail that survives user deletion
-- Oversized uploads rejected before streaming; `secure_filename`;
-  path-traversal guard on thumbnails
-- Credentials absent from all API responses, with tests
-
-### Not solved
-
-| Gap | Consequence | Fix |
+| Integration | Purpose | Key files/config |
 |---|---|---|
-| Tokens stored unencrypted | database access reveals LinkedIn tokens | application-level encryption |
-| Rate limiting is in-process | correct only while the app runs as one worker — which it does, because APScheduler lives in-process and a second worker would double-publish. Add a worker and the limits multiply by the worker count | shared counters (Redis) if the process count ever changes |
-| Anonymous limits key on `remote_addr` | behind a proxy that is the proxy, so everyone shares one counter. Coarser than intended rather than bypassable | `ProxyFix` plus a trusted-hop count when a proxy is introduced |
-| Some legacy routes accept a client-supplied `user_id` | an authenticated caller could act as another user on those routes | resolve identity from the session everywhere |
-| `ALLOW_NEW_SIGNUPS` open | anyone may create a pending account | set false once the team is onboarded |
-| The API is not hosted | nothing works until the backend is running locally | deploy it somewhere |
+| **Clerk** | Primary identity provider for the SPA | `backend/utils/clerk_auth.py`; env: `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `ADMIN_CLERK_EMAILS` |
+| **LinkedIn REST API** | OAuth sign-in + publishing | `backend/core/linkedin_publisher.py`, `backend/utils/linkedin_api.py`; env: `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI`. Video publish is a 5-step flow: initializeUpload → chunked PUT → finalizeUpload → poll for AVAILABLE → `POST /rest/posts` |
+| **Instagram** | Publishing | `InstagramPublisher` is an intentional stub/disabled — `instagrapi` was removed due to ToS/account-suspension risk |
+| **LLM providers** (pluggable via `LLM_PROVIDER`) | Caption generation, conversational composer | `backend/ai/llm_provider.py`: NVIDIA NIM (`meta/muse-glimmer-30b`, default), Google Gemini (`gemini-pro-latest`), Anthropic Claude (`claude-haiku-4-5` for captions, `claude-opus-5` for composer) |
+| **MCP server** | Lets AI agents drive the backend via tool calls | `mcp-server/` — Cloudflare Worker, TypeScript, `@modelcontextprotocol/sdk`, deployed via `wrangler`. Identity via GitHub OAuth → `/api/mcp/link-start` → `authorize-connector` → `verify-connector-grant` → mapped to `users.github_username`. Tools: `upload_reel_from_url`, `upload_reel`, `list_reels`, `draft_post`, `publish_reel`, `schedule_reel`, `list_posts`, `delete_reel_post`, `edit_reel_post`, `getting_started`, `show_available_commands` |
+| **Storage** | Media files | `backend/core/storage.py`: `MediaStore` interface; `LocalMediaStore` (disk, `REELS_FOLDER`) is implemented; `ObjectMediaStore` (S3/R2/GCS, `MEDIA_BACKEND=object`) is a documented stub |
+| **Database** | Persistence | SQLite (dev) or Supabase Postgres (prod) via `DATABASE_URL`; `supabase_init.sql` / `setup_supabase.py` for provisioning |
+| **Redis** | Optional caching/job queue | `docker-compose.yml` (`REDIS_URL`) — wiring appears partial; scheduler is otherwise in-process/APScheduler |
+| **ffmpeg/ffprobe** | Media validation & thumbnails | Validates real duration/codec; extracts a thumbnail by sampling 5 frames scored on detail + exposure |
+| **Nginx** | Reverse proxy | `docker-compose.yml` / `nginx.conf` for containerized deployment |
+| **Vercel** | Frontend hosting | `frontend/vercel.json`; env: `VITE_API_URL`, `VITE_CLERK_PUBLISHABLE_KEY` |
+| **Render** | Backend hosting target | `render.yaml` — currently fully commented out; backend runs locally, not deployed |
 
 ---
 
-## Operations
+## 5. Request Flow: Upload → Schedule → Publish
 
-### Rotating credentials
+1. **Upload** — `POST /api/upload` (or `/api/media/upload`) streams the video to disk (never fully buffered in memory). `ffprobe` validates real duration/codec; `ffmpeg` generates a scored thumbnail in a background thread. Files live under `REELS_FOLDER/<user_id>/` and persist across sign-out.
+2. **Compose** — The user (or the conversational composer via `POST /api/composer/turn`) selects a reel, writes or AI-generates a caption (`POST /api/captions/generate` → `backend/core/captions.py` → active `LLMProvider`), and picks a time. Composer tools (`choose_reel`, `set_caption`, `set_schedule`) only mutate a client-side draft — there is no publish tool inside the LLM loop.
+3. **Create post** — `POST /api/posts` creates a `Post` row with `status="draft"`.
+4. **Schedule** — `POST /api/posts/<id>/schedule` (or `/schedule-optimal`, using `backend/core/optimal_timing.py` + `Analytics`) sets `scheduled_time`, flips status to `scheduled`, and registers an APScheduler job (`backend/core/scheduler.py`), storing `job_id` on the `Post` row. `_restore_scheduled_jobs` rebuilds timers from the `posts` table on process start, honoring `SCHEDULER_MISFIRE_GRACE_SECONDS`.
+5. **Publish** — (scheduled, or manual `POST /api/posts/<id>/publish`) `get_publisher(user, platform)` resolves a `Publisher` implementation purely from `post.platform` (currently `LinkedInPublisher`). It runs the 5-step LinkedIn video protocol and returns a `PublishResult` (never raises), marking failures `retryable` only for transient errors (5xx / timeouts / rate limits).
+6. **Result** — On success, `Post.mark_as_posted()` records `linkedin_post_id`/`posted_at` and sets status to `posted`; an audit entry (`post.published`) is written (best-effort, non-blocking). On failure, `mark_as_failed()` records `error_message`, increments `retry_count`, sets status to `failed`, and audits `post.publish_failed`.
+7. **Retraction** — `DELETE /api/posts/<id>/published` calls `Publisher.delete()` (idempotent — 204 and 404 both count as success) and sets status to `cancelled`. Posts are never hard-deleted this way, preserving history.
+8. **Analytics** — `POST /api/users/<id>/analyze` recomputes `Analytics` rows (currently seeded rather than live-fetched from LinkedIn), which feed optimal-time scheduling.
 
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(40))"   # API_ACCESS_KEY
-python -c "import secrets; print(secrets.token_urlsafe(48))"   # SECRET_KEY
-```
+---
 
-Update Render, **trigger a deploy**, then verify: the new key returns 200, the
-old one 401, and a previously issued session token 401.
+## 6. Known Inconsistencies / Follow-ups
 
-Rotating `SECRET_KEY` invalidates every session — everyone signs in again.
-Rotating the LinkedIn client secret does **not** disconnect anyone; existing
-access tokens keep working, and only future OAuth exchanges are affected.
-
-The Supabase database password can be rotated through its Management API;
-afterwards, confirm the old password is refused rather than assuming it.
-
-### If a secret is exposed
-
-Rotate it, redeploy, verify the old value fails, and check the audit log for
-activity in the exposure window.
-
-### Health
-
-`/health` reports database connectivity. `/api/status` reports configuration
-state — the database *dialect*, never the URL.
+- `database/schemas.sql` predates the Clerk / `linkedin_credentials` / `media_files` additions — treat the ORM models as the source of truth, not the SQL file.
+- There is no formal migration tool (Alembic, etc.) — schema evolves via `create_all()` + ad-hoc `inspect()` column checks in `init_db()`. Any manual production schema change needs to be mirrored there.
+- LinkedIn tokens are stored in **two places**: encrypted columns directly on `users`, and a separate `linkedin_credentials` table. Confirm which is authoritative before further auth work, and plan to consolidate.
+- Instagram publishing is a stub only; `platform="instagram"` posts will not actually publish.
+- Redis is present in `docker-compose.yml` but not clearly wired into the scheduler, which is otherwise in-process (APScheduler) and tied to a single gunicorn worker — this is load-bearing (do not scale workers without moving the scheduler out of process first).

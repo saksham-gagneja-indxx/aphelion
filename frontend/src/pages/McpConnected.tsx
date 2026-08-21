@@ -27,7 +27,7 @@ const COPY: Record<string, { heading: string; body: string }> = {
   },
   pending_approval: {
     heading: 'Almost there',
-    body: 'LinkedIn is connected, but your account needs the owner to approve it before Post Pilot can act on it. Head back to Claude - you can try again once approved.',
+    body: 'LinkedIn is connected, but your account needs the owner to approve it before Aphelion can act on it. Head back to Claude - you can try again once approved.',
   },
   denied: {
     heading: "Didn't go through",

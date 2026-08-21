@@ -1,10 +1,10 @@
 {
 	"name": "@sakshamgagneja/post-pilot-mcp",
 	"version": "0.0.1",
-	"description": "Claude-powered LinkedIn social media management via MCP. List reels, generate AI captions, draft posts, schedule, and publish to LinkedIn.",
+	"description": "Claude-powered LinkedIn social media management via MCP, part of the Aphelion project. List reels, generate AI captions, draft posts, schedule, and publish to LinkedIn.",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/saksham-gagneja-indxx/postpilot.git"
+		"url": "https://github.com/saksham-gagneja-indxx/aphelion.git"
 	},
 	"author": "Saksham Gagneja",
 	"license": "MIT",

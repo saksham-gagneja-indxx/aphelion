@@ -1,5 +1,5 @@
 """
-Utility modules for Social Media Automation Agent
+Utility modules for Aphelion
 Configuration, logging, database, and helper functions
 """
 

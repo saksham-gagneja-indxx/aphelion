@@ -1,5 +1,5 @@
 """
-Main Flask Application for Post Pilot
+Main Flask Application for Aphelion
 Entry point for the entire application
 """
 
@@ -59,7 +59,7 @@ def create_app():
 
     # Initialize logging
     logger = setup_logging()
-    logger.info("🚀 Starting Post Pilot")
+    logger.info("🚀 Starting Aphelion")
 
     # Serve the built SPA from this same app when it is present (production
     # image). In development the Vite dev server serves it instead and this
@@ -259,7 +259,7 @@ def create_app():
         """Get API status"""
         settings = get_settings()
         return jsonify({
-            "app": "Post Pilot",
+            "app": "Aphelion",
             "version": "1.0.0",
             "environment": settings.flask_env,
             "debug": settings.debug,
@@ -354,7 +354,7 @@ if __name__ == "__main__":
     settings = get_settings()
 
     print("\n" + "=" * 60)
-    print("🚀 Post Pilot")
+    print("🚀 Aphelion")
     print("=" * 60)
     print(f"🌐 Environment: {settings.flask_env}")
     print(f"🔌 Port: {settings.flask_port}")
