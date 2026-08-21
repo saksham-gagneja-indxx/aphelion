@@ -144,7 +144,7 @@ Create a GitHub release so people can install directly from your repo.
 
    ---
 
-   **Deployed at:** https://post-pilot.reel-automation-mcp.workers.dev
+   **Deployed at:** https://aphelion.reel-automation-mcp.workers.dev
    ```
 
    - Click "Publish release"
