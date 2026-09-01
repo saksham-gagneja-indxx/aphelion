@@ -52,7 +52,7 @@ app.get("/authorize", async (c) => {
 		server: {
 			description:
 				"Lets Claude list your reels, draft LinkedIn posts, and schedule or publish them. You'll sign in on the Aphelion website - no GitHub account needed.",
-			logo: "https://postpilot-sandy.vercel.app/logo.png",
+			logo: new URL("/logo.png", c.env.WEBSITE_URL).toString(),
 			name: "Aphelion",
 		},
 		setCookie,
