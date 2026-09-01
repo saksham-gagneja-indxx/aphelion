@@ -103,20 +103,34 @@ def test_the_store_follows_a_reconfigured_root(tmp_path, monkeypatch):
     reset_media_store()
 
 
-def test_object_backend_fails_loudly_rather_than_silently_losing_media(
-    tmp_path, monkeypatch
-):
-    """The stub must raise, not pretend to work.
+def test_object_store_rejects_path_traversal_without_touching_s3(tmp_path):
+    """Containment is checked before any network call, same as LocalMediaStore.
 
-    A half-implemented store that quietly returns None would look like an empty
-    library rather than a missing implementation.
+    A `../` or absolute-looking filename must be refused outright rather than
+    turned into a `head_object`/`delete_object` call against some other user's
+    prefix - so these assertions must hold with no AWS credentials configured.
     """
     from backend.core.storage import ObjectMediaStore
 
     s = ObjectMediaStore(bucket="b", scratch=tmp_path)
-    with pytest.raises(NotImplementedError) as e:
-        s.exists(1, "a.mp4")
-    assert "MEDIA_BACKEND=local" in str(e.value)
+    assert s.resolve(1, "../2/secret.mp4") is None
+    assert s.exists(1, "../2/secret.mp4") is False
+    assert s.delete(s.user_dir(1) / "../2/secret.mp4") is False
+
+
+def test_object_store_exists_reflects_s3_head_object(tmp_path):
+    """`exists` is a real HEAD against the bucket, not a guess from local state."""
+    from botocore.stub import Stubber
+
+    from backend.core.storage import ObjectMediaStore
+
+    s = ObjectMediaStore(bucket="b", scratch=tmp_path)
+    with Stubber(s._s3) as stub:
+        stub.add_response("head_object", {}, {"Bucket": "b", "Key": "1/a.mp4"})
+        assert s.exists(1, "a.mp4") is True
+
+        stub.add_client_error("head_object", service_error_code="404")
+        assert s.exists(1, "a.mp4") is False
 
 
 # ----------------------------------------------------------------- thumbnails
