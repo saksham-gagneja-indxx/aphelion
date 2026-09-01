@@ -3,8 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
-import { SpeedInsights } from '@vercel/speed-insights/react'
-import { Analytics } from '@vercel/analytics/react'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { clerkAppearance } from './clerkAppearance'
@@ -67,8 +65,6 @@ createRoot(document.getElementById('root')!).render(
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <App />
-            <SpeedInsights />
-            <Analytics />
           </BrowserRouter>
         </QueryClientProvider>
       </ClerkProviderOrPassthrough>
